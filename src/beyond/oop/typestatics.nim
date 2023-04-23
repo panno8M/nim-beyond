@@ -27,21 +27,41 @@ proc statics_var(Type,node: NimNode): seq[NimNode] =
   result.add quote do:
     template `getter`(_: typedesc[`Type`]): untyped {.used.} = `classname`
 
+proc statics_enum(Type,node: NimNode): seq[NimNode] =
+  let basename = node[0].getname
+  let expt = node[0].isExported
+  let classname = nnkAccQuoted.newTree(ident fmt"{Type}.{basename}")
+  node[0] = node[0].setName(classname)
+
+  let accessor = nnkAccQuoted.newTree(basename).exportIf(expt)
+  result.add quote do:
+    template `accessor`(_: typedesc[`Type`]): untyped {.used.} = `classname`
+
 
 macro statics*[T](Type: typedesc[T]; body): untyped =
-  template warn(node: NimNode) = warning &"we do not have feature to convert this section to object-static:\n{node.lisprepr}", node
+  template warn(node: NimNode) = warning &"we do not have feature to convert this section to object-static:\n" & node.lisprepr
   for node in body:
     case node.kind
     of nnkVarSection:
       for def in node:
-        case def.kind:
+        case def.kind
         of nnkIdentDefs:
           body.add statics_var(Type, def)
         else:
           warn nnkVarSection.newTree def
-    
     of nnkProcDef:
       body.add statics_proc(Type, node)
+    of nnkTypeSection:
+      for def in node:
+        case def.kind
+        of nnkTypeDef:
+          case def[2].kind
+          of nnkEnumTy:
+            body.add statics_enum(Type, def)
+          else:
+            warn def
+        else:
+          warn def
     else:
       warn node
   body
