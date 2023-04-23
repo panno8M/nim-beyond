@@ -57,7 +57,11 @@ func commentout(str: string; `y/n` = true): string =
   else: str
 
 func stringify*(stmt: Statement, indent: Natural): string =
-  result.add stmt.content.commentout(stmt.commentedout).indent(indent) & '\n'
+  case stmt.kind
+  of skSentence:
+    result.add stmt.content.commentout(stmt.commentedout).indent(indent) & '\n'
+  of skDummy:
+    discard
   for child in stmt.children:
     result.add child.stringify(indent+stmt.childIndent)
 
