@@ -6,6 +6,8 @@ export
   macros except
     isExported
 
+template quoteExpr*(bl: untyped): untyped = (quote do: bl)[0]
+
 proc setName*(a,val: NimNode): NimNode =
   result = a.copy
   case a.kind

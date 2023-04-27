@@ -15,7 +15,8 @@ type Module* = ref object
   name*: string
   header*: string = "## This module is generated automatically."
   parent*: Module
-  isDummy*: bool
+  createMe*: bool
+  exportMe*: bool
   case kind*: ModuleKind
   of mkPackage:
     submodules*: Table[string, Module]
@@ -25,10 +26,16 @@ type Module* = ref object
     contents* = Statement.dummy
 
 
-proc module*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule)
-proc package*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage)
-proc dummyModule*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, isDummy: true)
-proc dummyPackage*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage, )
+proc module*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, createMe: true, exportMe: true)
+proc package*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage, createMe: true, exportMe: true)
+
+proc dontCreate*(module: Module; `y/n` = true): Module {.discardable.} =
+  module.createMe = not `y/n`
+  return module
+
+proc dontExport*(module: Module; `y/n` = true): Module {.discardable.} =
+  module.exportMe = not `y/n`
+  return module
 
 proc takeSubmodules*(pkg: Module; submodules: varargs[Module]): Module {.discardable.} =
   assert pkg.kind == mkPackage
@@ -107,7 +114,7 @@ proc exportModule*(module: Module) =
   case module.kind
 
   of mkModule:
-    if module.isDummy: return
+    if not module.createMe: return
     exportStatement:
       statement
         .add(module.imports.mapIt Statement.sentence fmt"import {it.pathFrom(module)}")
@@ -115,21 +122,38 @@ proc exportModule*(module: Module) =
         .add(module.contents)
 
   of mkPackage:
+    if not module.createMe: return
     if not module.path.dirExists:
       createDir module.path
     for name, sub in module.submodules:
       exportModule sub
 
-    if module.isDummy: return
     exportStatement:
       for name, sub in module.submodules:
+        if not sub.exportMe: continue
         statement.add Statement.sentence fmt"import {module.name}/{name}; export {name}"
 
+proc dropModule*(module: Module) =
+
+  case module.kind
+  of mkModule:
+    if not module.createMe: return
+    discard tryRemoveFile module.fileName
+  of mkPackage:
+    for name, sub in module.submodules:
+      if not sub.exportMe: continue
+      dropModule sub
+
+    if not module.createMe: return
+    discard tryRemoveFile module.fileName
+    if walkDirs(module.path).toSeq.len == 0:
+      removeDir module.path
 
 func dumpName(module: Module): string =
   result = module.name
+  if module.exportMe: result &= "*"
+  if module.createMe: result = "[" & result & "]"
   if module.kind == mkPackage: result &= "/"
-  if module.isDummy: result = "[" & result & "]"
 
 proc dumpTree*(module: Module): Statement =
   case module.kind
