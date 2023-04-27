@@ -10,24 +10,27 @@ import statements
 
 type ModuleKind* {.pure.} = enum
   mkPackage
-  mkSingle
+  mkModule
 type Module* = ref object
   name*: string
   header*: string = "## This module is generated automatically."
   parent*: Module
+  isDummy*: bool
   case kind*: ModuleKind
   of mkPackage:
     submodules*: Table[string, Module]
     exportSubmodules*: bool
-  of mkSingle:
+  of mkModule:
     imports*: seq[Module]
     contents* = Statement.dummy
 
 
-proc dummy*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkSingle)
-proc dummyPkg*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage)
+proc module*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule)
+proc package*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage)
+proc dummyModule*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, isDummy: true)
+proc dummyPackage*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage, )
 
-proc add*(pkg: Module; submodules: varargs[Module]): Module {.discardable.} =
+proc addSubmodules*(pkg: Module; submodules: varargs[Module]): Module {.discardable.} =
   assert pkg.kind == mkPackage
   for submodule in submodules:
     if submodule.parent != nil:
@@ -39,9 +42,18 @@ proc add*(pkg: Module; submodules: varargs[Module]): Module {.discardable.} =
 
   return pkg
 
-proc importModule*(module: Module; submodules: varargs[Module]): Module {.discardable.} =
-  assert module.kind == mkSingle
-  module.imports.add submodules
+proc importModule*(module: Module; modules: varargs[Module]): Module {.discardable.} =
+  assert module.kind == mkModule
+  module.imports.add modules
+  return module
+
+proc `contents=`*(module: Module; contents: Statement): Module {.discardable.} =
+  assert module.kind == mkModule
+  module.contents = contents
+  return module
+proc addContents*(module: Module; contents: Statement): Module {.discardable.} =
+  assert module.kind == mkModule
+  module.contents.add contents
   return module
 
 proc absoluteModuleChain*(module: Module): seq[Module] =
@@ -70,6 +82,7 @@ proc relativePath*(`from`, `to`: Module): string =
 
 template path*(module: Module): string = absolutePath(module)
 template pathFrom*(module, `from`: Module): string = relativePath(`from`, module)
+func fileName*(module: Module): string = module.path & ".nim"
 
 proc `[]`*(module: Module; path: string): Module =
   case path
@@ -83,29 +96,34 @@ macro `/`*(module: Module; path: untyped): Module =
     `module`[`strlit`]
 
 proc exportModule*(module: Module) =
-  var file = open(fmt"{module.path}.nim", fmWrite)
-  defer: close file
+  template exportStatement(body): untyped =
+    let file = open(module.fileName, fmWrite)
+    defer: close file
+    var statement {.inject.} = Statement.dummy
+      .add(Statement.sentence(module.header))
+    body
+    file.write $statement
 
   case module.kind
 
-  of mkSingle:
-    var stmt = Statement.dummy
-      .add(Statement.sentence(module.header))
-      .add(module.imports.mapIt Statement.sentence fmt"import {it.pathFrom(module)}")
-      .add(Statement.blank)
-      .add(module.contents)
-    file.write $stmt
+  of mkModule:
+    if module.isDummy: return
+    exportStatement:
+      statement
+        .add(module.imports.mapIt Statement.sentence fmt"import {it.pathFrom(module)}")
+        .add(Statement.blank)
+        .add(module.contents)
 
   of mkPackage:
-    var stmt = Statement.dummy
-      .add(Statement.sentence(module.header))
-    for name, sub in module.submodules:
-      stmt.add Statement.sentence fmt"import {module.name}/{name}; export {name}"
-    file.write $stmt
     if not module.path.dirExists:
       createDir module.path
     for name, sub in module.submodules:
       exportModule sub
+
+    if module.isDummy: return
+    exportStatement:
+      for name, sub in module.submodules:
+        statement.add Statement.sentence fmt"import {module.name}/{name}; export {name}"
 
 proc dumpTree*(module: Module): Statement =
   case module.kind
@@ -113,5 +131,5 @@ proc dumpTree*(module: Module): Statement =
     result = Statement.header fmt"{module.name}/"
     for name, sub in module.submodules:
       result.add dumpTree(sub)
-  of mkSingle:
+  of mkModule:
     result = Statement.sentence module.name
