@@ -30,7 +30,7 @@ proc package*(_: typedesc[Module]; name: string): Module = Module(name: name, ki
 proc dummyModule*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, isDummy: true)
 proc dummyPackage*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkPackage, )
 
-proc addSubmodules*(pkg: Module; submodules: varargs[Module]): Module {.discardable.} =
+proc takeSubmodules*(pkg: Module; submodules: varargs[Module]): Module {.discardable.} =
   assert pkg.kind == mkPackage
   for submodule in submodules:
     if submodule.parent != nil:
@@ -42,7 +42,7 @@ proc addSubmodules*(pkg: Module; submodules: varargs[Module]): Module {.discarda
 
   return pkg
 
-proc importModule*(module: Module; modules: varargs[Module]): Module {.discardable.} =
+proc importModules*(module: Module; modules: varargs[Module]): Module {.discardable.} =
   assert module.kind == mkModule
   module.imports.add modules
   return module
@@ -125,11 +125,20 @@ proc exportModule*(module: Module) =
       for name, sub in module.submodules:
         statement.add Statement.sentence fmt"import {module.name}/{name}; export {name}"
 
+
+func dumpName(module: Module): string =
+  result = module.name
+  if module.kind == mkPackage: result &= "/"
+  if module.isDummy: result = "[" & result & "]"
+
 proc dumpTree*(module: Module): Statement =
   case module.kind
   of mkPackage:
-    result = Statement.header fmt"{module.name}/"
+    result = Statement.header module.dumpName
     for name, sub in module.submodules:
       result.add dumpTree(sub)
   of mkModule:
-    result = Statement.sentence module.name
+    result = Statement.header module.dumpName
+    var imports = module.imports.mapIt it.dumpName
+    if imports.len != 0:
+      result.add Statement.sentence "import: " & imports.join(", ")
