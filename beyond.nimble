@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "la .panon."
-description   = "A new awesome nimble package"
+description   = "my advanced library for general use"
 license       = "MIT"
 srcDir        = "src"
 
