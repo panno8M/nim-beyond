@@ -39,3 +39,26 @@ func isExported*(node: NimNode): bool {.compileTime.} =
 func exportIf*(node: NimNode; cond: bool): NimNode {.compileTime.} =
   if cond: node.postfix("*")
   else: node
+
+func replaceIdent*(node: NimNode; ident: string; dst: NimNode): NimNode =
+  if node.len == 0: return
+    if node.eqIdent ident: dst
+    else: node
+  result = node.kind.newNimNode()
+  for n in node:
+    result.add do:
+      if n.eqIdent ident: dst
+      else: n.replaceIdent(ident,dst)
+  
+func getPragma*(node: NimNode; name: string): NimNode =
+  node.expectKind {nnkProcDef, nnkFuncDef}
+  for pragma in node.pragma:
+    case pragma.kind
+    of nnkCall, nnkCommand, nnkExprColonExpr:
+      if pragma[0].eqIdent name:
+        return pragma
+    of nnkIdent, nnkSym:
+      if pragma.eqIdent name:
+        return pragma
+    else:
+      continue
