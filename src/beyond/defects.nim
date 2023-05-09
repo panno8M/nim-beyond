@@ -5,21 +5,26 @@ import beyond/[
   macros
 ]
 
+const RaiseRuntimeErrorIfUnimplemented* {.booldefine.} = false
 type UnimplementedDefect* = object of Defect
 
 macro unimplemented*(def): untyped =
-  case def.kind:
+  case def.kind
   of nnkProcDef, nnkFuncDef:
+    let procdefref = copy def
+    procdefref[6] = newEmptyNode()
     let errormsg =
       if def[6].kind == nnkEmpty:
-        &"`{def[0].getname}` has not been implemented yet"
+        &"`{repr procDefref}` has not been implemented yet"
       else:
-        &"`{def[0].getname}` describes the process, but it is considered unimplemented"
-    let errorlit = newStrLitNode errormsg
+        &"`{repr procDefref}` describes the process, but it is considered unimplemented"
+    let errorlit = newLit errormsg
     warning errormsg, def
-    def[6] = newNimNode(nnkStmtList)
-              .add(quote do:
-                raise UnimplementedDefect.newexception(`errorlit`))
+    def[6] = quote do:
+      when RaiseRuntimeErrorIfUnimplemented:
+        raise UnimplementedDefect.newException(`errorlit`)
+      else:
+        discard
   else: 
     warning &"Unexpected expression has been caught; leave as it is.\n{def.lisprepr}", def
   return def
