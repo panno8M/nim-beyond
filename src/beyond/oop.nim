@@ -1,4 +1,4 @@
-import beyond/oop/[
+import ./oop/[
   typestatics
 ]
 export

@@ -1,7 +1,7 @@
 import std/[
   strformat,
 ]
-import beyond/[
+import ../[
   macros
 ]
 

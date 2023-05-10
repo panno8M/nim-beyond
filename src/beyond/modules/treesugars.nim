@@ -14,8 +14,10 @@ runnableExamples:
       pkg"typedetails"
         # Add generated modules to here lazily...
 
-import ../macros
-import ../modules
+import ../[
+  macros,
+  modules,
+]
 
 template pkg*(name: static string): Module = Module.package(name)
 template mdl*(name: static string): Module = Module.module(name)

@@ -1,9 +1,7 @@
 import std/[
   strformat
 ]
-import beyond/[
-  macros
-]
+import ./macros
 
 type BehaviorsIfUnimplemented* = enum
   Raise = "raise"

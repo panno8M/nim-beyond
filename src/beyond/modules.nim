@@ -6,7 +6,7 @@ import std/[
   macros,
   os,
 ]
-import statements
+import ./statements
 
 type ModuleKind* {.pure.} = enum
   mkPackage
