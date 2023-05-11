@@ -1,16 +1,11 @@
 import std/[
-  strformat
+  strformat,
+  logging,
 ]
 import ./macros
 
-type BehaviorsIfUnimplemented* = enum
-  Raise = "raise"
-  Discard = "discard"
-  LogWarn = "logWarn"
-const BehaviorIfUnimplemented* {.strdefine.} = $BehaviorsIfUnimplemented.Discard
-
-when BehaviorIfUnimplemented == $BehaviorsIfUnimplemented.LogWarn:
-  import std/logging; export logging
+var unimplementedCallback* =
+  proc(msg: string) = warn "[Unimplemented] ", msg
 
 type UnimplementedDefect* = object of Defect
 
@@ -25,17 +20,9 @@ macro unimplemented*(def): untyped =
       else:
         &"`{repr procDefref}` describes the process, but it is considered unimplemented"
     let errorlit = newLit errormsg
-    warning errormsg, def
-    def[6] =
-      case BehaviorIfUnimplemented
-      of $BehaviorsIfUnimplemented.Discard:
-        quote do: discard
-      of $BehaviorsIfUnimplemented.Raise:
-        quote do: raise UnimplementedDefect.newException(`errorlit`)
-      of $BehaviorsIfUnimplemented.LogWarn:
-        quote do: warn `errorlit`
-      else:
-        quote do: discard
+    warning errormsg, def[0]
+    def[6] = quote do: {.noSideEffect.}:
+      unimplementedCallback(`errorlit`)
   else: 
     warning &"Unexpected expression has been caught; leave as it is.\n{def.lisprepr}", def
   return def
