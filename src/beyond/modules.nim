@@ -97,10 +97,7 @@ proc `[]`*(module: Module; path: string): Module =
   of "..": return module.parent
   else: return module.submodules[path]
 
-macro `/`*(module: Module; path: untyped): Module =
-  let strlit = newStrLitNode($path)
-  quote do:
-    `module`[`strlit`]
+proc `/`*(module: Module; sub: string): Module = module[sub]
 
 proc exportModule*(module: Module) =
   template exportStatement(body): untyped =
