@@ -23,7 +23,7 @@ type Module* = ref object
     exportSubmodules*: bool
   of mkModule:
     imports*: seq[Module]
-    contents* = Statement.dummy
+    contents*: Statement
 
 
 proc module*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, touchMe: true, exportMe: true)
@@ -87,8 +87,8 @@ proc relativePath*(`from`, `to`: Module): string =
       toChains.mapIt(it.name)
   ).join("/")
 
-template path*(module: Module): string = absolutePath(module)
-template pathFrom*(module, `from`: Module): string = relativePath(`from`, module)
+proc path*(module: Module): string = absolutePath(module)
+proc pathFrom*(module, `from`: Module): string = relativePath(`from`, module)
 func fileName*(module: Module): string = module.path & ".nim"
 
 proc `[]`*(module: Module; path: string): Module =
@@ -103,8 +103,8 @@ proc exportModule*(module: Module) =
   template exportStatement(body): untyped =
     let file = open(module.fileName, fmWrite)
     defer: close file
-    var statement {.inject.} = Statement.dummy
-      .add(Statement.sentence(module.header))
+    var statement {.inject.} = `paragraph/`:
+      module.header
     body
     file.write $statement
 
@@ -113,10 +113,10 @@ proc exportModule*(module: Module) =
   of mkModule:
     if not module.touchMe: return
     exportStatement:
-      statement
-        .add(module.imports.mapIt Statement.sentence fmt"import {it.pathFrom(module)}")
-        .add(Statement.blank)
-        .add(module.contents)
+      for ipt in module.imports:
+        statement.add "import "&ipt.pathFrom(module)
+      statement.add ""
+      statement.add module.contents
 
   of mkPackage:
     if not module.touchMe: return
@@ -128,7 +128,7 @@ proc exportModule*(module: Module) =
     exportStatement:
       for name, sub in module.submodules:
         if not sub.exportMe: continue
-        statement.add Statement.sentence fmt"import {module.name}/{name}; export {name}"
+        statement.add fmt"import {module.name}/{name}; export {name}"
 
 proc dropModule*(module: Module) =
 
@@ -155,11 +155,15 @@ func dumpName(module: Module): string =
 proc dumpTree*(module: Module): Statement =
   case module.kind
   of mkPackage:
-    result = Statement.header module.dumpName
+    let subs = paragraph()
     for name, sub in module.submodules:
-      result.add dumpTree(sub)
+      subs.add dumpTree(sub)
+    return `paragraph/`:
+      module.dumpName
+      indent(2): subs
   of mkModule:
-    result = Statement.header module.dumpName
     var imports = module.imports.mapIt it.dumpName
-    if imports.len != 0:
-      result.add Statement.sentence "import: " & imports.join(", ")
+    return `paragraph/`:
+      module.dumpName
+      `option/`(imports.len != 0):
+        "import: " & imports.join(", ")
