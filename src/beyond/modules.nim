@@ -23,7 +23,7 @@ type Module* = ref object
     exportSubmodules*: bool
   of mkModule:
     imports*: seq[Module]
-    contents*: Statement
+    contents*: Statement = paragraph()
 
 
 proc module*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, touchMe: true, exportMe: true)
@@ -52,15 +52,6 @@ proc takeSubmodules*(pkg: Module; submodules: varargs[Module]): Module {.discard
 proc importModules*(module: Module; modules: varargs[Module]): Module {.discardable.} =
   assert module.kind == mkModule
   module.imports.add modules
-  return module
-
-proc `contents=`*(module: Module; contents: Statement): Module {.discardable.} =
-  assert module.kind == mkModule
-  module.contents = contents
-  return module
-proc addContents*(module: Module; contents: Statement): Module {.discardable.} =
-  assert module.kind == mkModule
-  module.contents.add contents
   return module
 
 proc absoluteModuleChain*(module: Module): seq[Module] =
@@ -114,9 +105,10 @@ proc exportModule*(module: Module) =
     if not module.touchMe: return
     exportStatement:
       for ipt in module.imports:
-        statement.add "import "&ipt.pathFrom(module)
-      statement.add ""
-      statement.add module.contents
+        discard statement.add "import "&ipt.pathFrom(module)
+      discard statement.addBlock:
+        ""
+        module.contents
 
   of mkPackage:
     if not module.touchMe: return
@@ -128,7 +120,7 @@ proc exportModule*(module: Module) =
     exportStatement:
       for name, sub in module.submodules:
         if not sub.exportMe: continue
-        statement.add fmt"import {module.name}/{name}; export {name}"
+        discard statement.add fmt"import {module.name}/{name}; export {name}"
 
 proc dropModule*(module: Module) =
 
@@ -157,7 +149,7 @@ proc dumpTree*(module: Module): Statement =
   of mkPackage:
     let subs = paragraph()
     for name, sub in module.submodules:
-      subs.add dumpTree(sub)
+      discard subs.add dumpTree(sub)
     return `paragraph/`:
       module.dumpName
       indent(2): subs

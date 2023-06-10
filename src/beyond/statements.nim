@@ -145,20 +145,26 @@ method render*(self: StmtOption; cfg: RenderingConfig): seq[string] =
       result.add rendered
 
 template statement*(x: Statement): Statement = x
+func statement*[T: Statement](x: seq[T]): Statement = paragraph x
 func statement*(x: string): Statement = text(x)
 
-func add*(self: Statement; children: seq[Statement]) =
+func add*(self: Statement; children: seq[Statement]): Statement =
   self.children.add children
-func add*[T: Statement](self: Statement; children: seq[T]) =
+  self
+func add*[T: Statement](self: Statement; children: seq[T]): Statement =
   for child in children: self.children.add statement child
-func add*(self: Statement; children: varargs[Statement, statement]) =
+  self
+func add*(self: Statement; children: varargs[Statement, statement]): Statement =
   self.add @children
 
-macro assignBlock*(self: var seq[Statement]; children) =
+macro assignBlock*(self: Statement; children): Statement =
   let children = stmtList_to_seq(children)
-  quote do: self = `children`
-macro addBlock*(self: var seq[Statement]; children) =
+  quote do:
+    `self` = `children`
+    `self`
+macro addBlock*(self: Statement; children): Statement =
   let children = stmtList_to_seq(children)
-  quote do: self.add `children`
+  quote do:
+    `self`.add `children`
 
 template `$`*(stmt: Statement): string = stmt.render(RenderingConfig()).join("\n")
