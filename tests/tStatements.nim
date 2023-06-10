@@ -1,4 +1,7 @@
-import beyond/statements
+import beyond/[
+  statements,
+  statements/nimtraits,
+]
 
 echo do:
   `paragraph/`:
