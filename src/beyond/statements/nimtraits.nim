@@ -85,7 +85,7 @@ method render*(self: StmtNimProc; cfg: RenderingConfig): seq[string] =
   if self.return_type.isSome:
     result[0] &= ": " & self.return_type.get
   if self.pragmas.len != 0:
-    result[0] &= "{." & self.pragmas.join(", ") & ".}"
+    result[0] &= " {." & self.pragmas.join(", ") & ".}"
 
   let idt: Statement = indent(2, self.children)
   @[idt].forRenderedChild(cfg):
