@@ -62,3 +62,7 @@ func getPragma*(node: NimNode; name: string): NimNode =
         return pragma
     else:
       continue
+
+func hasNoReturn*(node: NimNode): bool =
+  node.expectKind {nnkProcDef, nnkFuncDef}
+  node.params[0].kind == nnkEmpty or node.params[0].eqIdent("void")

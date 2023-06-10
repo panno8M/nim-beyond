@@ -81,7 +81,8 @@ method render*(self: StmtNimProc; cfg: RenderingConfig): seq[string] =
   of NimProcKind.PublicLambdaDef:
     self.name & "*: proc"
 
-  result[0] &= "(" & $self.args & ")"
+  if self.args.len != 0:
+    result[0] &= "(" & $self.args & ")"
   if self.return_type.isSome:
     result[0] &= ": " & self.return_type.get
   if self.pragmas.len != 0:
