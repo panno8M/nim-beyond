@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.3.1"
+version       = "0.3.2"
 author        = "la .panon."
 description   = "my advanced library for general use"
 license       = "MIT"
