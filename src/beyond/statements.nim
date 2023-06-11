@@ -10,34 +10,33 @@ type
     children*: seq[Statement]
 
   # == atoms ==
-  StmtAtom* = ref object of Statement
-  StmtText* = ref object of StmtAtom
+  AtomSt* = ref object of Statement
+  TextSt* = ref object of AtomSt
     text*: string
 
   # -- containers --
-  StmtJoin* = ref object of Statement
-    delimiter*: string
-  StmtParagraph* = ref object of Statement
+  ParagraphSt* = ref object of Statement
 
   # -- decorations --
-  StmtDeco* = ref object of StmtParagraph
+  DecoSt* = ref object of ParagraphSt
 
-  StmtUnderline* = ref object of StmtDeco
+  UnderlineSt* = ref object of DecoSt
     style*: string
 
-  StmtPrefix* = ref object of StmtDeco
-    prefix*: string
-  StmtComment* = ref object of StmtDeco
+  PrefixSt* = ref object of DecoSt
     style*: string
+  CommentSt* = ref object of PrefixSt
     execute*: bool
 
-  StmtIndent* = ref object of StmtDeco
-    indent*: Natural = 2
+  IndentSt* = ref object of DecoSt
+    level*: Natural = 2
 
   # -- controls --
-  StmtOption* = ref object of StmtParagraph
+  OptionSt* = ref object of ParagraphSt
     eval*: bool
 
+  JoinSt* = ref object of ParagraphSt
+    delimiter*: string
 
   RenderingConfig* = object
     ignoreComment*: HashSet[string]
@@ -56,21 +55,16 @@ template forRenderedChild(children: seq[Statement]; cfg; body): untyped =
     for rendered {.inject.} in child.render(cfg):
       body
 
+func text*(text: string): TextSt = TextSt(text: text)
+func oneline*(_: typedesc[JoinSt]): JoinSt = JoinSt(delimiter: "")
 
 method render*(self: Statement; cfg: RenderingConfig): seq[string] {.base.} =
   discard
 
-func text*(text: string): StmtText = StmtText(text: text)
-method render*(self: StmtText; cfg: RenderingConfig): seq[string] =
+method render*(self: TextSt; cfg: RenderingConfig): seq[string] =
   self.text.splitLines
 
-func underline*(style: string; children: seq[Statement]): StmtUnderline = StmtUnderline(style: style, children: children)
-func underline*(style: string; children: varargs[Statement, statement]): StmtUnderline = underline(style, @children)
-macro `underline/`*(style: string; children): StmtUnderline =
-  let children = stmtList_to_seq(children)
-  quote do: underline(`style`, `children`)
-
-method render*(self: StmtUnderline; cfg: RenderingConfig): seq[string] =
+method render*(self: UnderlineSt; cfg: RenderingConfig): seq[string] =
   let styleLen = self.style.len
   self.children.forRenderedChild(cfg):
     result.add rendered
@@ -79,13 +73,11 @@ method render*(self: StmtUnderline; cfg: RenderingConfig): seq[string] =
       ch = self.style[i mod styleLen]
     result.add underline
 
-
-func comment*(style: string; execute: bool; children: seq[Statement]): StmtComment = StmtComment(style: style, children: children, execute: execute)
-
-method render*(self: StmtPrefix; cfg: RenderingConfig): seq[string] =
+method render*(self: PrefixSt; cfg: RenderingConfig): seq[string] =
   self.children.forRenderedChild(cfg):
-    result.add self.prefix & rendered
-method render*(self: StmtComment; cfg: RenderingConfig): seq[string] =
+    result.add self.style & rendered
+
+method render*(self: CommentSt; cfg: RenderingConfig): seq[string] =
   if self.style in cfg.ignoreComment:
     return
   if self.execute:
@@ -93,77 +85,44 @@ method render*(self: StmtComment; cfg: RenderingConfig): seq[string] =
   else:
     self.children.forRenderedChild(cfg): result.add rendered
 
-
-func indent*(indent: Natural = 2; children: seq[Statement]): StmtIndent = StmtIndent(indent: indent, children: children)
-func indent*(indent: Natural = 2; children: varargs[Statement, statement]): StmtIndent = indent(indent, @children)
-macro `indent/`*(indent: Natural; children): StmtIndent =
-  let children = stmtList_to_seq(children)
-  quote do: indent(`indent`, `children`)
-method render*(self: StmtIndent; cfg: RenderingConfig): seq[string] =
+method render*(self: IndentSt; cfg: RenderingConfig): seq[string] =
   self.children.forRenderedChild(cfg):
-    result.add " ".repeat(self.indent) & rendered
+    result.add " ".repeat(self.level) & rendered
 
-
-func join*(delimiter: string; children: seq[Statement]): StmtJoin = StmtJoin(delimiter: delimiter, children: children)
-func join*(delimiter: string; children: varargs[Statement, statement]): StmtJoin = join(delimiter, @children)
-macro `join/`*(delimiter: string; children): StmtJoin =
-  let children = stmtList_to_seq(children)
-  quote do: join(`delimiter`, `children`)
-
-func oneline*(children: seq[Statement]): StmtJoin = join("", children)
-func oneline*(children: varargs[Statement, statement]): StmtJoin = oneline(@children)
-macro `oneline/`*(children): StmtJoin =
-  let children = stmtList_to_seq(children)
-  quote do: oneline(`children`)
-
-method render*(self: StmtJoin; cfg: RenderingConfig): seq[string] =
+method render*(self: JoinSt; cfg: RenderingConfig): seq[string] =
   self.children.forRenderedChild(cfg):
     result.add rendered
   result = @[result.join(self.delimiter)]
 
-
-func paragraph*(children: seq[Statement]): StmtParagraph = StmtParagraph(children: children)
-func paragraph*[T: Statement](children: seq[T]): StmtParagraph = paragraph(children.mapIt statement it)
-func paragraph*(children: varargs[Statement, statement]): StmtParagraph = paragraph(@children)
-macro `paragraph/`*(children): StmtParagraph =
-  let children = stmtList_to_seq(children)
-  quote do: paragraph(`children`)
-
-method render*(self: StmtParagraph; cfg: RenderingConfig): seq[string] =
+method render*(self: ParagraphSt; cfg: RenderingConfig): seq[string] =
   self.children.forRenderedChild(cfg):
     result.add rendered
 
-
-func option*(eval: bool; children: seq[Statement]): StmtOption = StmtOption(eval: eval, children: children)
-func option*(eval: bool; children: varargs[Statement, statement]): StmtOption = option(eval, @children)
-macro `option/`*(eval: bool; children): StmtOption =
-  let children = stmtList_to_seq(children)
-  quote do: option(`eval`, `children`)
-method render*(self: StmtOption; cfg: RenderingConfig): seq[string] =
+method render*(self: OptionSt; cfg: RenderingConfig): seq[string] =
   if self.eval:
     self.children.forRenderedChild(cfg):
       result.add rendered
 
-template statement*(x: Statement): Statement = x
-func statement*[T: Statement](x: seq[T]): Statement = paragraph x
+template statement*[T: Statement](x: T): Statement = x
+func statement*[T: Statement](x: seq[T]): Statement = ParagraphSt().add x
 func statement*(x: string): Statement = text(x)
 
-func add*(self: Statement; children: seq[Statement]): Statement =
+func add*[T: Statement](self: T; children: varargs[Statement, statement]): T =
+  self.children.add @children
+  self
+func add*[T: Statement](self: T; children: seq[Statement]): T =
   self.children.add children
   self
-func add*[T: Statement](self: Statement; children: seq[T]): Statement =
-  for child in children: self.children.add statement child
-  self
-func add*(self: Statement; children: varargs[Statement, statement]): Statement =
-  self.add @children
 
-macro assignBlock*(self: Statement; children): Statement =
-  let children = stmtList_to_seq(children)
-  quote do:
-    `self` = `children`
-    `self`
-macro addBlock*(self: Statement; children): Statement =
-  let children = stmtList_to_seq(children)
+macro body*[T: Statement](self: T; body): T =
+  let children = stmtList_to_seq(body)
+  let ret = gensym(nsklet, "self")
+  result = quote do:
+    let `ret` = `self`
+    `ret`.children = `children`
+    `ret`
+macro addBody*[T: Statement](self: T; body): T =
+  let children = stmtList_to_seq(body)
   quote do:
     `self`.add `children`
 

@@ -23,7 +23,7 @@ type Module* = ref object
     exportSubmodules*: bool
   of mkModule:
     imports*: seq[Module]
-    contents*: Statement = paragraph()
+    contents*: Statement = ParagraphSt()
 
 
 proc module*(_: typedesc[Module]; name: string): Module = Module(name: name, kind: mkModule, touchMe: true, exportMe: true)
@@ -91,12 +91,12 @@ proc `[]`*(module: Module; path: string): Module =
 proc `/`*(module: Module; sub: string): Module = module[sub]
 
 proc exportModule*(module: Module) =
-  template exportStatement(body): untyped =
+  template exportStatement(pred): untyped =
     let file = open(module.fileName, fmWrite)
     defer: close file
-    var statement {.inject.} = `paragraph/`:
+    var statement {.inject.} = ParagraphSt().body:
       module.header
-    body
+    pred
     file.write $statement
 
   case module.kind
@@ -106,7 +106,7 @@ proc exportModule*(module: Module) =
     exportStatement:
       for ipt in module.imports:
         discard statement.add "import "&ipt.pathFrom(module)
-      discard statement.addBlock:
+      discard statement.addBody:
         ""
         module.contents
 
@@ -147,15 +147,15 @@ func dumpName(module: Module): string =
 proc dumpTree*(module: Module): Statement =
   case module.kind
   of mkPackage:
-    let subs = paragraph()
+    let subs = ParagraphSt()
     for name, sub in module.submodules:
       discard subs.add dumpTree(sub)
-    return `paragraph/`:
+    return ParagraphSt().body:
       module.dumpName
-      indent(2): subs
+      IndentSt(level: 2).add subs
   of mkModule:
     var imports = module.imports.mapIt it.dumpName
-    return `paragraph/`:
+    return ParagraphSt().body:
       module.dumpName
-      `option/`(imports.len != 0):
+      OptionSt(eval: imports.len != 0).body:
         "import: " & imports.join(", ")

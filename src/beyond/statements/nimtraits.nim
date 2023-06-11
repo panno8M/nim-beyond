@@ -1,7 +1,6 @@
 import std/[
   sequtils,
   strutils,
-  macros,
   sets,
   options,
 ]
@@ -13,18 +12,12 @@ const
   NimComment* = toHashSet [NimComment_str]
   NimDocComment* = toHashSet [NimDocComment_str]
 
-func nimComment*(execute: bool; children: seq[Statement]): StmtComment = comment(NimComment_str, execute, children)
-func nimComment*(execute: bool; children: varargs[Statement, statement]): StmtComment = nimComment(execute, @children)
-
-func nimDocComment*(execute: bool; children: seq[Statement]): StmtComment = comment(NimDocComment_str, execute, children)
-func nimDocComment*(execute: bool; children: varargs[Statement, statement]): StmtComment = nimDocComment(execute, @children)
-
-macro `nimComment/`*(execute: bool; children): StmtComment =
-  let children = stmtList_to_seq(children)
-  quote do: nimComment(`execute`, `children`)
-macro `nimDocComment/`*(execute: bool; children): StmtComment =
-  let children = stmtList_to_seq(children)
-  quote do: nimDocComment(`execute`, `children`)
+func nim*(_: typedesc[CommentSt]; execute: bool): CommentSt = CommentSt(
+  style: NimComment_str,
+  execute: execute)
+func nimDoc*(_: typedesc[CommentSt]; execute: bool): CommentSt = CommentSt(
+  style: NimDocComment_str,
+  execute: execute)
 
 type NimIdentDef* = tuple
   name, `type`: string
@@ -48,25 +41,14 @@ type NimProcKind* = enum
   PublicFunc
   PrivateLambdaDef
   PublicLambdaDef
-type StmtNimProc* = ref object of StmtParagraph
+type NimProcSt* = ref object of ParagraphSt
   name*: string
   kind*: NimProcKind
   args*: seq[NimIdentDef]
   return_type*: Option[string]
   pragmas*: seq[string]
 
-macro `nimProc/`*(kind: NimProcKind; name: string; args: seq[NimIdentDef]; return_type: Option[string]; pragmas: seq[string]; children): StmtNimProc =
-  let children = stmtList_to_seq(children)
-  quote do:
-    StmtNimProc(
-      name: `name`,
-      kind: `kind`,
-      args: `args`,
-      return_type: `return_type`,
-      pragmas: `pragmas`,
-      children: `children`,
-    )
-method render*(self: StmtNimProc; cfg: RenderingConfig): seq[string] =
+method render*(self: NimProcSt; cfg: RenderingConfig): seq[string] =
   result.add case self.kind
   of NimProcKind.PrivateProc:
     "proc " & self.name
@@ -88,7 +70,7 @@ method render*(self: StmtNimProc; cfg: RenderingConfig): seq[string] =
   if self.pragmas.len != 0:
     result[0] &= " {." & self.pragmas.join(", ") & ".}"
 
-  let idt: Statement = indent(2, self.children)
+  let idt: Statement = IndentSt(level: 2).add self.children
   @[idt].forRenderedChild(cfg):
     result.add rendered
 
