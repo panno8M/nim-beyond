@@ -104,7 +104,10 @@ method render*(self: OptionSt; cfg: RenderingConfig): seq[string] =
       result.add rendered
 
 template statement*[T: Statement](x: T): Statement = x
-func statement*[T: Statement](x: seq[T]): Statement = ParagraphSt().add x
+func statement*[T: Statement](x: seq[T]): Statement =
+  result = ParagraphSt()
+  for xi in x:
+    result.children.add statement xi
 func statement*(x: string): Statement = text(x)
 
 func add*[T: Statement](self: T; children: varargs[Statement, statement]): T =

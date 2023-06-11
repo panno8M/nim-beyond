@@ -41,4 +41,10 @@ discard stmt.addBody:
       "TEM"
       "ENT"
 
+discard stmt.add @[
+  text"you can add",
+  text"seq[T: Statement]",
+  text"that will auto-convert into seq[Statement]"
+]
+
 echo stmt
