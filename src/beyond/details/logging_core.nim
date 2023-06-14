@@ -1,6 +1,7 @@
 import std/strutils
 import std/times
 import std/os
+import std/options
 
 type
   Level* = enum
@@ -31,37 +32,59 @@ type
     flushThreshold*: Level
     fmtStr*: string
 
-method log*(logger: Logger, level: Level, args: varargs[string, `$`]) {.gcsafe, tags: [RootEffect], base.} =
+  LogInfo* = object of RootObj
+    level*: Level
+
+method parseToken(info: LogInfo; token: string): Option[string] {.gcsafe, base.} =
+  let app = getAppFilename()
+  case token
+  of "date": some getDateStr()
+  of "time": some getClockStr()
+  of "datetime": some getDateStr() & "T" & getClockStr()
+  of "app": some app
+  of "appdir": some app.splitFile.dir
+  of "appname": some app.splitFile.name
+  of "levelid": some $LevelNames[info.level][0]
+  of "levelname": some LevelNames[info.level]
+  else:
+    none string
+
+method log*(logger: Logger; info: LogInfo; args: varargs[string, `$`]) {.gcsafe, tags: [RootEffect], base.} =
   discard
 
-proc substituteLog*(frmt: string, level: Level,
+type SymbolKind = enum
+  skText
+  skToken
+iterator lex(frmt: string): tuple[symbol: string, kind: SymbolKind] =
+  var i = 0
+  while i < frmt.len:
+    var symbol = ""
+    if frmt[i] == '$':
+      inc(i)
+      while i < frmt.len and frmt[i] in IdentChars:
+        symbol.add(toLowerAscii(frmt[i]))
+        inc(i)
+      yield (symbol, skToken)
+    else:
+      while i < frmt.len and frmt[i] != '$':
+        symbol.add frmt[i]
+        inc(i)
+      yield (symbol, skText)
+
+proc substituteLog*(info: LogInfo; frmt: string;
                     args: varargs[string, `$`]): string =
   var msgLen = 0
   for arg in args:
     msgLen += arg.len
   result = newStringOfCap(frmt.len + msgLen + 20)
-  var i = 0
-  while i < frmt.len:
-    if frmt[i] != '$':
-      result.add(frmt[i])
-      inc(i)
-    else:
-      inc(i)
-      var v = ""
-      let app = getAppFilename()
-      while i < frmt.len and frmt[i] in IdentChars:
-        v.add(toLowerAscii(frmt[i]))
-        inc(i)
-      case v
-      of "date": result.add(getDateStr())
-      of "time": result.add(getClockStr())
-      of "datetime": result.add(getDateStr() & "T" & getClockStr())
-      of "app": result.add(app)
-      of "appdir": result.add(app.splitFile.dir)
-      of "appname": result.add(app.splitFile.name)
-      of "levelid": result.add(LevelNames[level][0])
-      of "levelname": result.add(LevelNames[level])
-      else: discard
+  for symbol, kind in frmt.lex:
+    case kind
+    of skText:
+      result.add symbol
+    of skToken:
+      let token = info.parseToken(symbol)
+      if token.isSome:
+        result.add (get token)
   for arg in args:
     result.add(arg)
 
