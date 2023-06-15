@@ -1,7 +1,4 @@
 import std/strutils
-import std/times
-import std/os
-import std/options
 
 type
   Level* = enum
@@ -32,30 +29,14 @@ type
     flushThreshold*: Level
     fmtStr*: string
 
-  LogInfo* = object of RootObj
-    level*: Level
+  LogData* = object of RootObj
 
-method parseToken(info: LogInfo; token: string): Option[string] {.gcsafe, base.} =
-  let app = getAppFilename()
-  case token
-  of "date": some getDateStr()
-  of "time": some getClockStr()
-  of "datetime": some getDateStr() & "T" & getClockStr()
-  of "app": some app
-  of "appdir": some app.splitFile.dir
-  of "appname": some app.splitFile.name
-  of "levelid": some $LevelNames[info.level][0]
-  of "levelname": some LevelNames[info.level]
-  else:
-    none string
-
-method log*(logger: Logger; info: LogInfo; args: varargs[string, `$`]) {.gcsafe, tags: [RootEffect], base.} =
-  discard
+method log*(logger: Logger; level: Level; data: LogData; args: varargs[string, `$`]) {.gcsafe, tags: [RootEffect], base.} = discard
 
 type SymbolKind = enum
   skText
   skToken
-iterator lex(frmt: string): tuple[symbol: string, kind: SymbolKind] =
+iterator lex*(frmt: string): tuple[symbol: string, kind: SymbolKind] =
   var i = 0
   while i < frmt.len:
     var symbol = ""
@@ -71,22 +52,15 @@ iterator lex(frmt: string): tuple[symbol: string, kind: SymbolKind] =
         inc(i)
       yield (symbol, skText)
 
-proc substituteLog*(info: LogInfo; frmt: string;
-                    args: varargs[string, `$`]): string =
+method parse*(data: LogData; level: Level; frmt: string;
+                    args: varargs[string, `$`]): string {.gcsafe,base.} =
   var msgLen = 0
   for arg in args:
     msgLen += arg.len
-  result = newStringOfCap(frmt.len + msgLen + 20)
-  for symbol, kind in frmt.lex:
-    case kind
-    of skText:
-      result.add symbol
-    of skToken:
-      let token = info.parseToken(symbol)
-      if token.isSome:
-        result.add (get token)
+  result = newStringOfCap(frmt.len + msgLen)
+  result.add frmt
   for arg in args:
-    result.add(arg)
+    result.add arg
 
 proc lazyNew*[T: Logger](self: var T): var T {.inline.} =
   if self.isNil: self = new T

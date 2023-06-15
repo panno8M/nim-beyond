@@ -4,15 +4,15 @@ type
   ConsoleLogger* = ref object of Logger
     useStderr*: bool
 
-method log*(logger: ConsoleLogger; info: LogInfo; args: varargs[string, `$`]) {.gcsafe.} =
-  if info.level >= logger.levelThreshold:
-    let ln = info.substituteLog(logger.fmtStr, args)
+method log*(logger: ConsoleLogger; level: Level; data: LogData; args: varargs[string, `$`]) {.gcsafe.} =
+  if level >= logger.levelThreshold:
+    let ln = data.parse(level, logger.fmtStr, args)
     try:
       var handle = stdout
       if logger.useStderr:
         handle = stderr
       writeLine(handle, ln)
-      if info.level >= logger.flushThreshold: flushFile(handle)
+      if level >= logger.flushThreshold: flushFile(handle)
     except IOError:
       discard
 
