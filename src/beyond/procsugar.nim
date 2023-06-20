@@ -18,20 +18,30 @@ type GenProcKind = enum
   gpkLambda
 proc genProcImpl(procdef, name, body: NimNode; kind: GenProcKind): NimNode =
   let procty = procdef.getImpl[2]
-  let name = case kind
-    of gpkPublicProc: name.postFix("*")
-    else: name
+  var newname: NimNode = copy name
+  var newpragmas = copy procty[1]
+
+  if newname.kind == nnkPragmaExpr:
+    newpragmas.add newname[1][0..^1]
+    newname  = newname[0]
+
+  if kind == gpkPublicProc:
+    newname = newname.postFix("*")
+
   let nodeKind = case kind
     of gpkLambda: nnkLambda
     else: nnkProcDef
-  nodekind.newTree(
-      name,
+
+  result = nodekind.newTree(
+      newname,
       newEmptyNode(),
       newEmptyNode(),
       procty[0],
-      procty[1],
+      # procty[1],
+      newpragmas,
       newEmptyNode(),
       body)
+  hint repr result, newname
 
 macro genPrivateProcAs*(procdef: typedesc[proc]; name; body): untyped =
   genProcImpl(procdef, name, body, gpkPrivateProc)

@@ -1,5 +1,6 @@
 import std/unittest
 import std/math
+import std/macros
 import beyond/procsugar
 
 type TEST_ENUM = enum
@@ -9,6 +10,8 @@ type TEST_ENUM = enum
   MAX
 type TEST_FUNC_TY = proc(int_val: int; float_val: float): TEST_ENUM {.noSideEffect.}
 type TEST_LAMBDA_TY = proc(int_val: int): int
+
+template TEST_PRAGMA {.pragma.}
 
 test "define proc from type":
   # TEST_FUNC_TY.genPrivateProcAs TEST_FUNC:
@@ -24,3 +27,8 @@ test "define lambda from type":
 # TEST_FUNC_TY.genPublicProcAs TEST_FUNC:
 TEST_FUNC_TY +> TEST_PUBLIC_FUNC:
   debugEcho "HI!"
+
+test "define with additional pragmas":
+  TEST_FUNC_TY -> TEST_FUNC {.TEST_PRAGMA.}:
+    discard
+  check TEST_FUNC.hasCustomPragma(TEST_PRAGMA)
