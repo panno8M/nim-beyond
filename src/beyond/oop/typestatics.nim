@@ -8,14 +8,21 @@ import ../[
 proc defineStaticProc(Type,node: NimNode): NimNode =
   node.expectKind nnkProcDef
   let basename = node[0].getname
-  let classname = nnkAccQuoted.newTree(ident &"{Type}.{basename}")
-  let funcname = basename.exportIf(node[0].isExported)
-  node[0] = node[0].setName(classname)
+  let newprocname = nnkAccQuoted.newTree(ident &"{Type}.{basename}")
+  let templatename = basename.exportIf(node[0].isExported)
+  var args = copy(node.params)
+  args.insert(1, newIdentDefs(ident"_", nnkBracketExpr.newTree(ident"typedesc", Type)))
+  node[0] = node[0].setName(newprocname)
+  let templatedef = newProc(
+    name= templatename,
+    params= args[0..^1],
+    body= newStmtList(newprocname.newCallFromParams(node.params)),
+    procType= nnkTemplateDef,
+    pragmas= nnkPragma.newTree(ident"used"),
+  )
   newStmtList()
     .add(node)
-    .add(quote do:
-      template `funcname`(_: typedesc[`Type`]; args: varargs[untyped]): untyped {.used.} = `classname`(args)
-   )
+    .add(templatedef)
 
 proc defineStaticVariableSection(Type,node: NimNode): NimNode =
   node.expectKind {nnkVarSection, nnkLetSection, nnkConstSection}
@@ -26,17 +33,20 @@ proc defineStaticVariableSection(Type,node: NimNode): NimNode =
   var getters = newSeqOfCap[NimNode](node.len)
 
   for def in node:
-    let basename = def[0].getname
-    let expt = def[0].isExported
-    let classname = nnkAccQuoted.newTree(ident fmt"{Type}.{basename}")
-    def[0] = def[0].setName(classname)
+    for i in countup(0, def.len-3):
+      let basename = def[i].getname
+      let expt = def[i].isExported
+      let newname = nnkAccQuoted.newTree(ident fmt"{Type}.{basename}")
+      def[i] = def[i].setName(newname)
 
-    let setter = nnkAccQuoted.newTree(ident fmt"{basename}=").exportIf(expt)
-    let getter = nnkAccQuoted.newTree(ident fmt"{basename}").exportIf(expt)
-    setters.add quote do:
-      template `setter`(_: typedesc[`Type`]; args: varargs[untyped]): untyped {.used.} = `classname` = args
-    getters.add quote do:
-      template `getter`(_: typedesc[`Type`]): untyped {.used.} = `classname`
+      let getter = nnkAccQuoted.newTree(basename).exportIf(expt)
+      getters.add quote do:
+        template `getter`(_: typedesc[`Type`]): typeof(`newname`) {.used.} = `newname`
+
+      if not hasSetter: continue
+      let setter = nnkAccQuoted.newTree(ident $basename&"=").exportIf(expt)
+      setters.add quote do:
+        template `setter`(_: typedesc[`Type`]; value: typeof(`newname`)) {.used.} = `newname` = value
 
   result = newStmtList()
     .add(node)
@@ -58,7 +68,7 @@ proc defineStaticTypeSection(Type,node: NimNode): NimNode =
 
     let accessor = nnkAccQuoted.newTree(basename).exportIf(expt)
     accessors.add quote do:
-      template `accessor`(_: typedesc[`Type`]): untyped {.used.} = `classname`
+      template `accessor`(_: typedesc[`Type`]): typedesc[`classname`] {.used.} = `classname`
 
   newStmtList()
     .add(node)

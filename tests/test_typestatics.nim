@@ -6,6 +6,8 @@ int.statics:
   let letitem*: int = 3
   const constitem*: int = 4
 
+  var multiitem1*, multiitem2: int
+
   var `!quoted!`*: int = 5
 
   proc initialize*(lvl: int) {.nimcall.} =
@@ -33,6 +35,9 @@ test "typestatics":
   check int.varitem == 1
   check int.letitem == 3
   check int.constitem == 4
+
+  int.multiitem1 = 1
+  int.multiitem2 = 2
 
   check int.localenum.e1 == `int.localenum`.e1
 

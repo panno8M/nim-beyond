@@ -1,6 +1,7 @@
 import std/[
   macros,
   strformat,
+  sequtils,
 ]
 export
   macros except
@@ -66,3 +67,10 @@ func getPragma*(node: NimNode; name: string): NimNode =
 func hasNoReturn*(node: NimNode): bool =
   node.expectKind {nnkProcDef, nnkFuncDef}
   node.params[0].kind == nnkEmpty or node.params[0].eqIdent("void")
+
+func newCallFromParams*(name: NimNode; params: NimNode): NimNode =
+  params.expectKind nnkFormalParams
+  result = name.newCall(
+    params[1..^1] # remove return_value
+    .mapIt(it[0..^3]) # remove type and default_value
+    .concat())
