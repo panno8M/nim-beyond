@@ -1,5 +1,7 @@
 import ./oop/[
-  typestatics
+  typestatics,
+  procsugar,
 ]
 export
-  typestatics
+  typestatics,
+  procsugar

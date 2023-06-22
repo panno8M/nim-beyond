@@ -14,8 +14,10 @@ runnableExamples:
       pkg"typedetails"
         # Add generated modules to here lazily...
 
-import ../[
+import ../../[
   macros,
+]
+import ../[
   modules,
 ]
 

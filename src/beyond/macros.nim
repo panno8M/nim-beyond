@@ -1,6 +1,5 @@
 import std/[
   macros,
-  strformat,
   sequtils,
 ]
 export
@@ -9,48 +8,61 @@ export
 
 template quoteExpr*(bl: untyped): untyped = (quote do: bl)[0]
 
-proc setName*(a,val: NimNode): NimNode =
-  result = a.copy
-  case a.kind
+proc getName*(node: NimNode): NimNode =
+  case node.kind
   of nnkIdent, nnkAccQuoted:
-    return val
-  of nnkPostfix, nnkPrefix:
-    result[1] = val
-    return
-  of nnkPragmaExpr:
-    result[0] = a[0].setName(val)
+    return node
+  of nnkPostfix:
+    return node[1]
+  of nnkPragmaExpr, nnkProcDef, nnkFuncDef:
+    return node[0].getname
   else:
-    error(&"Do not know how to get name of ({lisprepr(a)})\n{repr(a)}", a)
+    error "The node is not supported for `getName`", node
 
-proc getName*(a: NimNode): NimNode =
-  case a.kind
-  of nnkIdent, nnkAccQuoted:
-    return a
-  of nnkPostfix, nnkPrefix:
-    return a[1]
-  of nnkPragmaExpr:
-    return a[0].getname
+proc replaceName*(node, value: NimNode): NimNode =
+  case node.kind
+  of nnkIdent, nnkAccQuoted, nnkSym:
+    return value
+  of nnkPostfix:
+    return node.kind.newTree(node[0], value)
+  of nnkPragmaExpr, nnkProcDef, nnkFuncDef:
+    return node.kind.newTree(node[0].replaceName(value))
+      .add node[1..^1]
   else:
-    error(&"Do not know how to get name of ({lisprepr(a)})\n{repr(a)}", a)
+    error "The node is not supported for `replaceName`: " & lisprepr node, node
 
 func isExported*(node: NimNode): bool {.compileTime.} =
-  if node.kind == nnkPostfix: return node[0].repr == "*"
-  if node.kind == nnkPragmaExpr: return node[0].isExported
+  case node.kind
+  of nnkPostfix:
+    return node[0].repr == "*"
+  of nnkPragmaExpr, nnkProcDef, nnkFuncDef:
+    return node[0].isExported
+  else:
+    return false
 
-func exportIf*(node: NimNode; cond: bool): NimNode {.compileTime.} =
-  if cond: node.postfix("*")
+func postfixIf*(node: NimNode; op: string; cond: bool): NimNode {.compileTime.} =
+  if cond: node.postfix(op)
   else: node
+func exportIf*(node: NimNode; cond: bool): NimNode {.compileTime.} =
+  node.postfixIf("*", cond)
 
-func replaceIdent*(node: NimNode; ident: string; dst: NimNode): NimNode =
-  if node.len == 0: return
-    if node.eqIdent ident: dst
-    else: node
+func replaceIdents*(node: NimNode; idents: varargs[tuple[key: string; value: NimNode]]): NimNode =
+  if node.len == 0:
+    for ident in idents:
+      if node.eqIdent ident.key: return ident.value
+    return node
   result = node.kind.newNimNode()
   for n in node:
-    result.add do:
-      if n.eqIdent ident: dst
-      else: n.replaceIdent(ident,dst)
-  
+    result.add n.replaceIdents(idents)
+func replaceIdents*(node: NimNode; idents: varargs[NimNode]): NimNode =
+  if node.len == 0:
+    for ident in idents:
+      if node.eqIdent ident: return ident
+    return node
+  result = node.kind.newNimNode()
+  for n in node:
+    result.add n.replaceIdents(idents)
+
 func getPragma*(node: NimNode; name: string): NimNode =
   node.expectKind {nnkProcDef, nnkFuncDef}
   for pragma in node.pragma:

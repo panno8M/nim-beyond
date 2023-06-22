@@ -1,7 +1,8 @@
 import beyond/oop/typestatics
 import std/unittest
 
-int.statics:
+type MyInt = int
+MyInt.statics:
   var varitem*: int = 2
   let letitem*: int = 3
   const constitem*: int = 4
@@ -10,10 +11,8 @@ int.statics:
 
   var `!quoted!`*: int = 5
 
-  proc initialize*(lvl: int) {.nimcall.} =
-    discard
-  proc `deinitialize`(lvl: int) =
-    discard
+  proc proc_arg*(int_val: int): int = int_val * 2
+  proc `proc_no_arg`() {.nimcall.} = discard
 
   type localenum = enum
     e1, e2
@@ -21,33 +20,55 @@ int.statics:
   type LocalObject = object
     localitem: int
 
-proc pow2(val: int): int {.staticOf: int.} = val*val
+proc proc_by_pragma(val: int): int {.staticOf: int.} = val*2
 
-var varitem2 {.staticOf: int.} : int = 6
-let letitem2 {.staticOf: int.} : int = 7
-const constitem2 {.staticOf: int.} : int = 8
+var varitem_by_pragma {.staticOf: int.}: int = 6
+let letitem_by_pragma {.staticOf: int.}: int = 7
+const constitem_by_pragma {.staticOf: int.}: int = 8
 
-int.`!quoted!`= 1
+proc proc_arg*(int_val: int): int {.staticOf: float.} =
+  int_val * 3
+
+proc proc_arg_generic[T: int|float](int_val: int): int =
+  T!!proc_arg(int_val)
+
+int!!`!quoted!` = 1
 
 test "typestatics":
-  check int.varitem == 2
-  int.varitem = 1
-  check int.varitem == 1
-  check int.letitem == 3
-  check int.constitem == 4
+  check int!!varitem == 2
+  int!!varitem = 1
+  check int!!varitem == 1
+  check int!!letitem == 3
+  check int!!constitem == 4
 
-  int.multiitem1 = 1
-  int.multiitem2 = 2
+  discard MyInt!!varitem
 
-  check int.localenum.e1 == `int.localenum`.e1
+  int!!multiitem1 = 1
+  int!!multiitem2 = 2
 
-  let lobj {.used.} = int.LocalObject(localitem: 2)
+  int!!varitem = 10
+  check int!!varitem == 10
 
-  int.initialize(0)
-  check int.pow2(10) == 100
+  check int!!localenum.e1 == `int!!localenum`.e1
 
-  check int.varitem2 == 6
-  int.varitem2 = 16
-  check int.varitem2 == 16
-  check int.letitem2 == 7
-  check int.constitem2 == 8
+  let lobj {.used.} = int!!LocalObject(localitem: 2)
+
+  check int!!proc_arg(5) == 10
+  check `int!!proc_arg`(5) == 10
+  int!!proc_no_arg()
+  let proc_arg_ptr = int!!proc_arg
+  let proc_no_arg_ptr = int!!proc_no_arg
+  check proc_arg_ptr(2) == 4
+  proc_no_arg_ptr()
+  let proc_no_arg_ptr2 {.used.} = `int!!proc_no_arg`
+
+  check int!!proc_by_pragma(5) == 10
+
+  check int!!varitem_by_pragma == 6
+  int!!varitem_by_pragma = 16
+  check int!!varitem_by_pragma == 16
+  check int!!letitem_by_pragma == 7
+  check int!!constitem_by_pragma == 8
+
+  check proc_arg_generic[int](3) == 6
+  check proc_arg_generic[float](3) == 9

@@ -1,5 +1,5 @@
 {.experimental: "dynamicBindSym".}
-import std/macros
+import ../macros
 
 macro defineProc*(typedef; body): untyped =
   if not (typedef.kind == nnkInfix and typedef[0].eqIdent "from"):
@@ -18,8 +18,19 @@ type GenProcKind = enum
   gpkLambda
 proc genProcImpl(procdef, name, body: NimNode; kind: GenProcKind): NimNode =
   let procty = procdef.getImpl[2]
-  var newname: NimNode = copy name
-  var newpragmas = copy procty[1]
+  var newname = name
+  var newpragmas = procty[1]
+
+  var newparams = copy procty[0]
+  var argnames: seq[NimNode]
+  for newparam in newparams:
+    if newparam.kind != nnkIdentDefs: continue
+    for i in 0..(newparam.len-3):
+      newparam[i] = genSym(nskParam, $newparam[i])
+      argnames.add newparam[i]
+
+  var newbody = body
+    .replaceIdents(argnames)
 
   if newname.kind == nnkPragmaExpr:
     newpragmas.add newname[1][0..^1]
@@ -36,12 +47,10 @@ proc genProcImpl(procdef, name, body: NimNode; kind: GenProcKind): NimNode =
       newname,
       newEmptyNode(),
       newEmptyNode(),
-      procty[0],
-      # procty[1],
+      newparams,
       newpragmas,
       newEmptyNode(),
-      body)
-  hint repr result, newname
+      newbody)
 
 macro genPrivateProcAs*(procdef: typedesc[proc]; name; body): untyped =
   genProcImpl(procdef, name, body, gpkPrivateProc)
@@ -52,6 +61,6 @@ macro genPublicProcAs*(procdef: typedesc[proc]; name; body): untyped =
 macro genLambda*(procdef: typedesc[proc]; body): untyped =
   genProcImpl(procdef, newEmptyNode(), body, gpkLambda)
 
-template `->`*(procdef: typedesc[proc]; name; body): untyped = genPrivateProcAs(procdef, name, body)
-template `+>`*(procdef: typedesc[proc]; name; body): untyped = genPublicProcAs(procdef, name, body)
+template `=>`*(procdef: typedesc[proc]; name; body): untyped = genPrivateProcAs(procdef, name, body)
+template `=>*`*(procdef: typedesc[proc]; name; body): untyped = genPublicProcAs(procdef, name, body)
 template `=>`*(procdef: typedesc[proc]; body): untyped = genLambda(procdef, body)
