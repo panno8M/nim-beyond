@@ -60,7 +60,3 @@ macro genPublicProcAs*(procdef: typedesc[proc]; name; body): untyped =
 
 macro genLambda*(procdef: typedesc[proc]; body): untyped =
   genProcImpl(procdef, newEmptyNode(), body, gpkLambda)
-
-template `=>`*(procdef: typedesc[proc]; name; body): untyped = genPrivateProcAs(procdef, name, body)
-template `=>*`*(procdef: typedesc[proc]; name; body): untyped = genPublicProcAs(procdef, name, body)
-template `=>`*(procdef: typedesc[proc]; body): untyped = genLambda(procdef, body)

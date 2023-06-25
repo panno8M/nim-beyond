@@ -1,7 +1,7 @@
 import std/unittest
 import std/math
 import std/macros
-import beyond/oop/procsugar
+import beyond/oop
 
 type TEST_ENUM = enum
   teA

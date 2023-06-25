@@ -5,32 +5,46 @@ import ../[
   macros
 ]
 
-const delim = "!!"
+const delim = "|>"
 
 func newQuoted(items: varargs[NimNode]): NimNode =
   nnkAccQuoted.newTree(items)
-func makeSName(Type, name: NimNode): NimNode =
+func makeSymbol(Type, name: NimNode): NimNode =
   result = newQuoted ident repr(Type.getType[1]) & delim & $name
 template replaceToStatic(node: untyped) =
   let baseName = node.getname
-  let newName = makeSName(Type, baseName)
+  let newName = makeSymbol(Type, baseName)
   node = node.replaceName(newName)
 
 macro getStatic*[T](Type: typedesc[T]; item): untyped =
-  result = item
-  case result.kind
-  of nnkAccQuoted:
-    result = makeSName(Type, result)
-  else:
-    if result.len > 0:
-      result[0] = makeSName(Type, result[0])
+  var symbol: NimNode
+  var whenValid: NimNode
+  var whenInvalid: NimNode
+  template symbolizeIdent(item: NimNode) =
+      symbol = makeSymbol(Type, item)
+      whenValid = symbol
+      whenInvalid = Type.newDotExpr item
+  block MAKE_TREE:
+    case item.kind
+    of nnkAccQuoted:
+      symbolizeIdent item
     else:
-      result = makeSName(Type, result)
-
-template `!!`*[T](Type: typedesc[T]; item): untyped =
-  # It looks like '::' aren't you?
-  Type.getStatic(item)
-
+      if item.len == 0:
+        symbolizeIdent item
+      else:
+        whenValid = copy item
+        var task = whenValid
+        while task.len != 0 and task[0].len != 0:
+          task = task[0]
+        symbol = makeSymbol(Type, task[0])
+        task[0] = symbol
+        whenInvalid = copy item
+        whenInvalid.insert(1, Type)
+  result = quote do:
+    when declared `symbol`:
+      `whenValid`
+    else:
+      `whenInvalid`
 
 proc defineStaticProc(Type, node: NimNode): NimNode =
   node.expectKind nnkProcDef
@@ -50,28 +64,21 @@ proc defineStaticTypeSection(Type, node: NimNode): NimNode =
     replaceToStatic(def[0])
   node
 
-macro statics*[T](Type: typedesc[T]; body): untyped =
-  template err(node: NimNode) = error &"There is currently no function to convert this section:\n" &
-      node.lisprepr, node
-  result = newStmtList()
-  for node in body:
-    case node.kind
-    of nnkVarSection, nnkLetSection, nnkConstSection:
-      result.add defineStaticVariableSection(Type, node)
-    of nnkProcDef:
-      result.add defineStaticProc(Type, node)
-    of nnkTypeSection:
-      result.add defineStaticTypeSection(Type, node)
-    else:
-      err node
+proc staticOf_recursive(Type, node: NimNode): NimNode =
+  case node.kind
+  of nnkVarSection, nnkLetSection, nnkConstSection:
+    return defineStaticVariableSection(Type, node)
+  of nnkProcDef:
+    return defineStaticProc(Type, node)
+  of nnkTypeSection:
+    return defineStaticTypeSection(Type, node)
+  of nnkStmtList:
+    result = newStmtList()
+    for child in node:
+      result.add staticOf_recursive(Type, child)
+  else:
+    error &"There is currently no function to convert this section:\n" &
+        node.lisprepr, node
 
 macro staticOf*[T](Type: typedesc[T]; def): untyped =
-  template err(node: NimNode) = error &"There is currently no function to convert this section:\n" &
-      node.lisprepr, node
-  case def.kind
-  of nnkVarSection, nnkLetSection, nnkConstSection:
-    return defineStaticVariableSection(Type, def)
-  of nnkProcDef:
-    return defineStaticProc(Type, def)
-  else:
-    err def
+  staticOf_recursive(Type, def)
