@@ -1,6 +1,7 @@
 import std/[
   macros,
   sequtils,
+  options,
 ]
 export
   macros except
@@ -50,18 +51,18 @@ func replaceIdents*(node: NimNode; idents: varargs[tuple[key: string; value: Nim
   if node.len == 0:
     for ident in idents:
       if node.eqIdent ident.key: return ident.value
-    return node
-  result = node.kind.newNimNode()
-  for n in node:
-    result.add n.replaceIdents(idents)
+  else:
+    for i in 0..<node.len:
+      node[i] = node[i].replaceIdents(idents)
+  return node
 func replaceIdents*(node: NimNode; idents: varargs[NimNode]): NimNode =
   if node.len == 0:
     for ident in idents:
       if node.eqIdent ident: return ident
-    return node
-  result = node.kind.newNimNode()
-  for n in node:
-    result.add n.replaceIdents(idents)
+  else:
+    for i in 0..<node.len:
+      node[i] = node[i].replaceIdents(idents)
+  return node
 
 func getPragma*(node: NimNode; name: string): NimNode =
   node.expectKind {nnkProcDef, nnkFuncDef}
@@ -86,3 +87,11 @@ func newCallFromParams*(name: NimNode; params: NimNode): NimNode =
     params[1..^1] # remove return_value
     .mapIt(it[0..^3]) # remove type and default_value
     .concat())
+
+proc add*(s: NimNode; o: Option[NimNode]) =
+  if o.isSome: s.add o
+
+proc add*(s: NimNode; os: varargs[Option[NimNode]]) =
+  for o in os:
+    if o.isSome:
+      s.add o
