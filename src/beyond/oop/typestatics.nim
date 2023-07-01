@@ -47,7 +47,7 @@ macro getStatic*[T](Type: typedesc[T]; item): untyped =
       `whenInvalid`
 
 proc defineStaticProc(Type, node: NimNode): NimNode =
-  node.expectKind nnkProcDef
+  node.expectKind {nnkProcDef, nnkFuncDef, nnkConverterDef, nnkTemplateDef, nnkMacroDef}
   replaceToStatic(node[0])
   node
 
@@ -68,7 +68,7 @@ proc staticOf_recursive(Type, node: NimNode): NimNode =
   case node.kind
   of nnkVarSection, nnkLetSection, nnkConstSection:
     return defineStaticVariableSection(Type, node)
-  of nnkProcDef:
+  of nnkProcDef, nnkFuncDef, nnkConverterDef, nnkTemplateDef, nnkMacroDef:
     return defineStaticProc(Type, node)
   of nnkTypeSection:
     return defineStaticTypeSection(Type, node)
