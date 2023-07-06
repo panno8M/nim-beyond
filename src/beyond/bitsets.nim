@@ -21,15 +21,12 @@ macro mask*[BitField: enum](Type: typedesc[Bitset[BitField]]): int =
 
 {.push, inline.}
 proc toBitset*[BitField: enum](bitfield: BitField): Bitset[BitField] =
-  {.warning[HoleEnumConv]: off.}
-  Bitset[BitField](bitfield)
+  cast[Bitset[BitField]](bitfield)
 proc toBitset*[BitField: enum](ord: int): Bitset[BitField] =
-  {.warning[HoleEnumConv]: off.}
-  Bitset[BitField](ord)
+  cast[Bitset[BitField]](ord)
 
 func field*[BitField: enum](bitset: Bitset[BitField]): BitField =
-  {.warning[EnumConv]: off.}
-  BitField(bitset)
+  cast[BitField](bitset)
 func ord*[BitField: enum](bitset: Bitset[BitField]): int =
   bitset.field.ord
 
@@ -70,6 +67,7 @@ defop2asgn.unpack `+=`, `*=`, `-+-=`, `-=`, incl, excl
 
 {.push, inline.}
 iterator items*[BitField: enum](bitset: Bitset[BitField]): BitField =
+  {.warning[HoleEnumConv]: off.}
   for item in BitField.items:
     if (item.ord and bitset.ord) == item.ord:
       yield item
@@ -77,7 +75,7 @@ iterator bits*[BitField: enum](bitset: Bitset[BitField]): BitField =
   var i: int = 1
   while (i and Bitset[BitField].mask) != 0:
     if (i and bitset.ord) != 0:
-      yield BitField(i)
+      yield cast[BitField](i)
     i = i shl 1
 
 proc `$`*[BitField: enum](bitset: Bitset[BitField]): string =

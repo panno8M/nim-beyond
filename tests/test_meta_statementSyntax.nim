@@ -4,39 +4,39 @@ import beyond/meta/[
 ]
 import std/strutils
 
-var stmt = ParagraphSt().body:
+var stmt = +$$..ParagraphSt():
   text "hello, statement!"
   ""
-  IndentSt(level: 2).body:
+  +$$..IndentSt(level: 2):
     "<INDENT level= 2/>"
-  OptionSt(eval: true).body:
+  +$$..OptionSt(eval: true):
     "<OPTION eval= true/>"
-  OptionSt(eval: false).body:
+  +$$..OptionSt(eval: false):
     "<OPTION eval= false/>"
-  CommentSt.nim(execute= true).body:
+  +$$..CommentSt.nim(execute= true):
     "<NIM-COMMENT execute= true/>"
-  CommentSt.nim(execute= false).body:
+  +$$..CommentSt.nim(execute= false):
     "<NIM-COMMENT execute= false/>"
-  CommentSt.nimDoc(execute= true).body:
+  +$$..CommentSt.nimDoc(execute= true):
     "<NIM-DOC-COMMENT execute= true/>"
-  UnderlineSt(style: "-*-").body:
+  +$$..UnderlineSt(style: "-*-"):
     "<UNDERLINE style= \"-*-\"/>"
-  JoinSt.oneline().body:
+  +$$..JoinSt.oneline():
     "<ONELINE>"
     "<TEXT text=1/>"
     "<TEXT text=2/>"
     "<TEXT text=3/>"
     "</ONELINE>"
 
-discard stmt.addBody:
+discard +$$..stmt:
   "THIS"
-  IndentSt(level: 2).body:
+  +$$..IndentSt(level: 2):
     "IS"
-    CommentSt.nim(execute= true).body:
+    +$$..CommentSt.nim(execute= true):
       "A"
-      UnderlineSt(style: "~").body:
+      +$$..UnderlineSt(style: "~"):
         "COMPLEX"
-    JoinSt.oneline.body:
+    +$$..JoinSt.oneline:
       "STA"
       "TEM"
       "ENT"
@@ -46,5 +46,16 @@ discard stmt.add @[
   text"seq[T: Statement]",
   text"that will auto-convert into seq[Statement]"
 ]
+
+discard +$$..stmt:
+  +$$..TreeSt(head: text "And you can draw"):
+    +$$..ListSt(stylize: ListStylize_unordered_star):
+      "directory"
+      "tree"
+    +$$..TreeSt(head: "diagram"):
+      +$$..TreeSt(head: "by"):
+        "using"
+        "TreeSt"
+    "object."
 
 echo stmt

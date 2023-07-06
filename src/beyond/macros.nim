@@ -7,8 +7,6 @@ export
   macros except
     isExported
 
-template quoteExpr*(bl: untyped): untyped = (quote do: bl)[0]
-
 proc getName*(node: NimNode): NimNode =
   case node.kind
   of nnkIdent, nnkAccQuoted:
@@ -88,6 +86,9 @@ func newCallFromParams*(name: NimNode; params: NimNode): NimNode =
     .mapIt(it[0..^3]) # remove type and default_value
     .concat())
 
+func newAddr*(node: NimNode): NimNode = nnkAddr.newTree(node)
+func newUnsafeAddr*(node: NimNode): NimNode = ident("unsafeAddr").newCall(node)
+
 proc add*(s: NimNode; o: Option[NimNode]) =
   if o.isSome: s.add o
 
@@ -95,3 +96,22 @@ proc add*(s: NimNode; os: varargs[Option[NimNode]]) =
   for o in os:
     if o.isSome:
       s.add o
+
+proc stmtList_to_seq*(stmtList: NimNode; conv: string): NimNode =
+  nnkBracket.newTree(
+    stmtList[0..^1].mapIt(conv.newCall it)
+  ).prefix("@")
+
+proc variableSection_to_exprs*(section: NimNode): seq[NimNode] =
+  assert section.kind in {nnkVarSection, nnkLetSection}
+  for identdefs in section:
+    let t = identdefs[^2]
+    let v = identdefs[^1]
+    for nameWithDeco in identdefs[0..^3]:
+      let name = nameWithDeco.getName
+      if section.kind == nnkVarSection:
+        result.add quote do:
+          (var `nameWithDeco`: `t` = `v`; `name`)
+      elif section.kind == nnkLetSection:
+        result.add quote do:
+          (let `nameWithDeco`: `t` = `v`; `name`)

@@ -1,14 +1,29 @@
 import std/[
   strutils,
-  sequtils,
-  macros,
   sets,
 ]
+import ../macros
 
 type
   Statement* = ref object of RootObj
     children*: seq[Statement]
 
+proc ListStylize_ordered_decimal*(i: Positive): string = $i&". "
+proc ListStylize_unordered_star*(i: Positive): string = "* "
+
+type TreeStylizeToken = enum
+  tstHead
+  tstBody
+  tstTail
+  tstNone
+proc TreeStylize_default*(token: TreeStylizeToken): string =
+  case token
+  of tstHead: "├─ "
+  of tstBody: "│  "
+  of tstTail: "└─ "
+  of tstNone: "   "
+
+type
   # == atoms ==
   AtomSt* = ref object of Statement
   TextSt* = ref object of AtomSt
@@ -16,6 +31,16 @@ type
 
   # -- containers --
   ParagraphSt* = ref object of Statement
+
+  ListSt* = ref object of ParagraphSt
+    stylize* = ListStylize_ordered_decimal
+
+  BlockSt* = ref object of ParagraphSt
+    head*: Statement
+    indentLevel*:Natural = 2
+
+  TreeSt* = ref object of BlockSt
+    stylize* = TreeStylize_default
 
   # -- decorations --
   DecoSt* = ref object of ParagraphSt
@@ -41,21 +66,16 @@ type
   RenderingConfig* = object
     ignoreComment*: HashSet[string]
 
-proc stmtList_to_seq(stmtList: NimNode): NimNode =
-  nnkBracket.newTree(
-    stmtList[0..^1].mapIt("statement".newCall it)
-  ).prefix("@")
-
 template forValidChild(children: seq[Statement]; body): untyped =
-  for child {.inject.} in children.items:
+  for i_child {.inject.}, child {.inject.} in children.pairs:
     if child.isNil: continue
     body
 template forRenderedChild(children: seq[Statement]; cfg; body): untyped =
   children.forValidChild:
-    for rendered {.inject.} in child.render(cfg):
+    for i_rendered {.inject.}, rendered {.inject.} in child.render(cfg):
       body
 
-func text*(text: string): TextSt = TextSt(text: text)
+converter text*(text: string): TextSt {.noSideEffect.} = TextSt(text: text)
 func oneline*(_: typedesc[JoinSt]): JoinSt = JoinSt(delimiter: "")
 
 method render*(self: Statement; cfg: RenderingConfig): seq[string] {.base.} =
@@ -90,9 +110,12 @@ method render*(self: IndentSt; cfg: RenderingConfig): seq[string] =
     result.add " ".repeat(self.level) & rendered
 
 method render*(self: JoinSt; cfg: RenderingConfig): seq[string] =
+  result = newSeq[string](1)
+  var needsdelim = false
   self.children.forRenderedChild(cfg):
-    result.add rendered
-  result = @[result.join(self.delimiter)]
+    if needsdelim: result[0].add self.delimiter
+    result[0].add rendered
+    needsdelim = true
 
 method render*(self: ParagraphSt; cfg: RenderingConfig): seq[string] =
   self.children.forRenderedChild(cfg):
@@ -103,30 +126,59 @@ method render*(self: OptionSt; cfg: RenderingConfig): seq[string] =
     self.children.forRenderedChild(cfg):
       result.add rendered
 
-template statement*[T: Statement](x: T): Statement = x
-func statement*[T: Statement](x: seq[T]): Statement =
+method render*(self: BlockSt; cfg: RenderingConfig): seq[string] =
+  let indent = " ".repeat(self.indentLevel)
+  result.add self.head.render(cfg)
+  self.children.forRenderedChild(cfg):
+    result.add indent & rendered
+
+method render*(self: TreeSt; cfg: RenderingConfig): seq[string] =
+  let
+    body = self.stylize(tstBody)
+    head = self.stylize(tstHead)
+    tail = self.stylize(tstTail)
+    none = self.stylize(tstNone)
+  template token: string =
+    if i_rendered != 0:
+      if i_child != self.children.high: body
+      else:                             none
+    else:
+      if i_child != self.children.high: head
+      else:                             tail
+  result.add self.head.render(cfg)
+  self.children.forRenderedChild(cfg):
+    result.add token & rendered
+
+method render*(self: ListSt; cfg: RenderingConfig): seq[string] =
+  self.children.forValidChild:
+    let style = self.stylize(i_child+1)
+    let space = " ".repeat(style.len)
+    for i, rendered in child.render(cfg):
+      if i == 0:
+        result.add style & rendered
+      else:
+        result.add space & rendered
+
+template `$$`*[T: Statement](x: T): Statement = x
+func `$$`*[T: Statement](x: seq[T]): Statement =
   result = ParagraphSt()
   for xi in x:
-    result.children.add statement xi
-func statement*(x: string): Statement = text(x)
+    result.children.add $$xi
+converter `$$`*(x: string): Statement {.noSideEffect.} = text(x)
 
-func add*[T: Statement](self: T; children: varargs[Statement, statement]): T =
+func add*[T: Statement](self: T; children: varargs[Statement, `$$`]): T =
   self.children.add @children
   self
 func add*[T: Statement](self: T; children: seq[Statement]): T =
   self.children.add children
   self
 
-macro body*[T: Statement](self: T; body): T =
-  let children = stmtList_to_seq(body)
-  let ret = gensym(nsklet, "self")
-  result = quote do:
-    let `ret` = `self`
-    `ret`.children = `children`
-    `ret`
 macro addBody*[T: Statement](self: T; body): T =
-  let children = stmtList_to_seq(body)
+  let children = stmtList_to_seq(body, "$$")
   quote do:
     `self`.add `children`
+
+template `+$$..`*[T: Statement](self: T; body): T =
+  self.addBody body
 
 template `$`*(stmt: Statement): string = stmt.render(RenderingConfig()).join("\n")
