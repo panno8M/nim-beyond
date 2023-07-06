@@ -16,11 +16,13 @@ proc hash*[T](x: ref[T]): Hash {.inline.} =
   hash(cast[pointer](x))
 
 type
+  DTFlag* = enum
+    dtfDummy
+    dtfIncludee
+template All*(_: typedesc[set[DTFlag]]): set[DTFlag] =
+  {dtfDummy, dtfIncludee}
+type
   DTNode* = Directory or Module ## Directory-Tree Node
-  ModuleFlag* = enum
-    mfDummy
-  DirectoryFlag* = enum
-    dfDummy
   ExportLevel* = enum
     esPrivate           = -2
     esRecommendPrivate  = -1
@@ -37,7 +39,7 @@ type
   Directory* = ref object
     name*: string
     exportLevel*: ExportLevel = esInherit
-    flags*: set[DirectoryFlag]
+    flags*: set[DTFlag]
     parent*: Directory
     modules*: Table[string, Module]
     subdirs*: Table[string, Directory]
@@ -46,7 +48,7 @@ type
     name*: string
     exportLevel*: ExportLevel = esInherit
     exportThrethold*: ExportLevel = esPublic
-    flags*: set[ModuleFlag]
+    flags*: set[DTFlag]
     parent*: Directory
     cloud*: Cloud
     contents*: Statement = ParagraphSt()
@@ -62,15 +64,15 @@ func dumpName(cloud: Cloud): string =
     name = "cloud_@" & cast[uint64](cloud).toHex()
   result = "{{" & name & "}}"
 
-func dumpName(module: Module; mask = {mfDummy}): string =
+func dumpName(module: Module; mask = set[DTFlag].All): string =
   result = module.nameWithExt
   let masked = mask * module.flags
-  if mfDummy in masked: result = "[" & result & "]"
+  if dtfDummy in masked: result = "[" & result & "]"
 
-func dumpName(directory: Directory; mask = {dfDummy}): string =
+func dumpName(directory: Directory; mask = set[DTFlag].All): string =
   result = directory.name & "/"
   let masked = mask * directory.flags
-  if dfDummy in masked: result = "[" & result & "]"
+  if dtfDummy in masked: result = "[" & result & "]"
 
 proc unpackModules*(dir: Directory; depth = Natural.high): HashSet[Module] =
   if depth == 0: return
@@ -112,22 +114,22 @@ proc inclClouds*(module: Module; clouds: varargs[Cloud]): Module =
 proc cloud*(name: string): Cloud =
   Cloud(name: name)
 
-proc mdl*(name: string; flags: set[ModuleFlag] = {}): Module = Module(name: name, flags: flags, cloud: cloud(name&"_cloud"))
-proc dir*(name: string; flags: set[DirectoryFlag] = {}): Directory = Directory(name: name, flags: flags)
+proc mdl*(name: string; flags: set[DTFlag] = {}): Module = Module(name: name, flags: flags, cloud: cloud(name&"_cloud"))
+proc dir*(name: string; flags: set[DTFlag] = {}): Directory = Directory(name: name, flags: flags)
 
 proc isRoot*(node: Module|Directory): bool = node.parent.isNil
 
 proc toggle[T](s: var set[T]; v: sink T; b: bool) =
   if b: s.incl v
   else: s.excl v
-template toggle_flag(node: Module|Directory; flag; yes: bool): untyped =
+template toggle_flag(node: DTNode; flag; yes: bool): untyped =
   node.flags.toggle(flag, yes)
   node
 
-proc dummy*(module: Module; yes = true): Module =
-  toggle_flag(module, mfDummy, yes)
-proc dummy*(directory: Directory; yes = true): Directory =
-  toggle_flag(directory, dfDummy, yes)
+proc dummy*[T: DTNode](node: T; yes = true): T =
+  toggle_flag(node, dtfDummy, yes)
+proc includee*[T: DTNode](node: T; yes = true): T =
+  toggle_flag(node, dtfIncludee, yes)
 
 proc private*[T: DTNode](node: T): T =
   result = node
@@ -220,20 +222,25 @@ proc getExportLevel(node: DTNode): ExportLevel =
       return esFriend
     return node.parent.getExportLevel
   return node.exportLevel
-proc makeImportSentence(target, module: Module) : string =
+proc makeImportSentence(target, module: Module; res: var string) : bool =
+  if dtfIncludee in target.flags: return false
   let path = target.relativePath(module).changeFileExt("")
   if target.getExportLevel >= module.exportThrethold:
-    return "import " & path & "; export " & target.name
+    res = "import " & path & "; export " & target.name
+    return true
   else:
-    return "import " & path
+    res = "import " & path
+    return true
 
 proc importFromCloud*(_:typedesc[ParagraphSt]; module: Module): ParagraphSt =
   result = ParagraphSt()
+  var str: string
   for target in module.cloud.unpackModules:
-    discard result.add makeImportSentence(target, module)
+    if makeImportSentence(target, module, str):
+      discard result.add str
 
 proc generate*(module: Module) =
-  if mfDummy in module.flags: return
+  if dtfDummy in module.flags: return
   var statement = +$$..ParagraphSt():
     module.header
     ParagraphSt.importFromCloud(module)
@@ -242,16 +249,16 @@ proc generate*(module: Module) =
   module.path.writeFile $statement
 
 proc generate*(dir: Directory) =
-  if dfDummy in dir.flags: return
+  if dtfDummy in dir.flags: return
   var items: seq[string]
   if not dir.path.dirExists:
     createDir dir.path
   for name, subd in dir.subdirs:
     generate subd
-    items.add subd.dumpname({dfDummy})
+    items.add subd.dumpname({dtfDummy})
   for name, module in dir.modules:
     generate module
-    items.add module.dumpname({mfDummy})
+    items.add module.dumpname({dtfDummy})
 
   (dir.path/"modulegenInfo.nims").writeFile do:
     "let modules: seq[string] = @[\n" &
