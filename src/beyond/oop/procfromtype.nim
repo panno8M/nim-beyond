@@ -17,7 +17,9 @@ type GenProcKind = enum
   gpkPrivateProc
   gpkLambda
 proc genProcImpl(procdef, name, body: NimNode; kind: GenProcKind): NimNode =
-  let procty = procdef.getImpl[2]
+  var procty = procdef.getTypeImpl[1]
+  if procty.kind == nnkSym:
+    procty = procty.getImpl[2]
   var newname = name
   var newpragmas = procty[1]
 

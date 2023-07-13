@@ -23,8 +23,6 @@ staticOf int:
   type LocalObject = object
     localitem: int
 
-template templated(_: typedesc[int]): string = "TEMPLATE"
-
 proc proc_by_pragma(val: int): int {.staticOf: int.} = val*2
 
 var varitem_by_pragma {.staticOf: int.}: int = 6
@@ -81,6 +79,3 @@ test "access to static procs":
 
   check proc_arg_generic[int](3) == 6
   check proc_arg_generic[float](3) == 9
-
-test "access to ordinal procs that takes typedesc at 1st param":
-  check int|>templated() == int|>templated

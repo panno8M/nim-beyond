@@ -19,11 +19,9 @@ template replaceToStatic(node: untyped) =
 macro getStatic*[T](Type: typedesc[T]; item): untyped =
   var symbol: NimNode
   var whenValid: NimNode
-  var whenInvalid: NimNode
   template symbolizeIdent(item: NimNode) =
       symbol = makeSymbol(Type, item)
       whenValid = symbol
-      whenInvalid = Type.newDotExpr item
   block MAKE_TREE:
     case item.kind
     of nnkAccQuoted:
@@ -38,13 +36,7 @@ macro getStatic*[T](Type: typedesc[T]; item): untyped =
           task = task[0]
         symbol = makeSymbol(Type, task[0])
         task[0] = symbol
-        whenInvalid = copy item
-        whenInvalid.insert(1, Type)
-  result = quote do:
-    when declared `symbol`:
-      `whenValid`
-    else:
-      `whenInvalid`
+  result = whenValid
 
 proc defineStaticProc(Type, node: NimNode): NimNode =
   node.expectKind {nnkProcDef, nnkFuncDef, nnkConverterDef, nnkTemplateDef, nnkMacroDef}

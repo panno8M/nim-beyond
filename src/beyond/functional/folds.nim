@@ -1,4 +1,4 @@
-import ./[ macros, ]
+import ../[ macros, ]
 
 template all*[N: static int; T](s: array[N, T]; pred): bool =
   var result = true
