@@ -6,6 +6,7 @@ import std/[
   sets,
   hashes,
   os,
+  algorithm,
 ]
 import ./statements
 import ../macros
@@ -18,45 +19,43 @@ proc hash*[T](x: ref[T]): Hash {.inline.} =
 type
   DTFlag* = enum
     dtfDummy
-    dtfIncludee
+    dtfInternal
 template All*(_: typedesc[set[DTFlag]]): set[DTFlag] =
-  {dtfDummy, dtfIncludee}
+  {dtfDummy, dtfInternal}
 type
-  DTNode* = Directory or Module ## Directory-Tree Node
-  ExportLevel* = enum
-    esPrivate           = -2
-    esRecommendPrivate  = -1
-    esInherit           =  0
-    esFriend            =  1
-    esPublic            =  2
+  RelationSetting* = enum
+    rsInherit
+    rsAllowImport
+    rsAllowImportAndExport
+  ExportSetting* = enum
+    esDontExport
+    esExportAllowed
+    esExportAll
 
   Cloud* = ref object
     name*: string
     subClouds*: HashSet[Cloud]
     modules*: HashSet[Module]
-    directories*: HashSet[Directory]
 
-  Directory* = ref object
+  DTNode* = ref object of RootObj ## Directory-Tree Node
     name*: string
-    exportLevel*: ExportLevel = esInherit
     flags*: set[DTFlag]
+    relationSetting*: RelationSetting = rsInherit
     parent*: Directory
+    cloud*: Cloud
+
+  Directory* = ref object of DTNode
     modules*: Table[string, Module]
     subdirs*: Table[string, Directory]
 
-  Module* = ref object
-    name*: string
-    exportLevel*: ExportLevel = esInherit
-    exportThrethold*: ExportLevel = esPublic
-    flags*: set[DTFlag]
-    parent*: Directory
-    cloud*: Cloud
+  Module* = ref object of DTNode
+    exportSetting*: ExportSetting = esDontExport
     contents*: Statement = ParagraphSt()
     header*: string = "## This module was generated automatically. Changes will be lost."
 
 const moduleExt*: string = ".nim"
-template nameWithExt*(module: Module): string = module.name & moduleExt
-template nameWithExt*(module: Directory): string = module.name
+method nameWithExt*(node: DTNode): string {.base.} = node.name
+method nameWithExt*(module: Module): string = module.name & moduleExt
 
 func dumpName(cloud: Cloud): string =
   var name = cloud.name
@@ -67,12 +66,14 @@ func dumpName(cloud: Cloud): string =
 func dumpName(module: Module; mask = set[DTFlag].All): string =
   result = module.nameWithExt
   let masked = mask * module.flags
-  if dtfDummy in masked: result = "[" & result & "]"
+  if dtfInternal in masked: result = "." & result
+  if dtfDummy in masked: result = "(" & result & ")"
 
 func dumpName(directory: Directory; mask = set[DTFlag].All): string =
   result = directory.name & "/"
   let masked = mask * directory.flags
-  if dtfDummy in masked: result = "[" & result & "]"
+  if dtfInternal in masked: result = "." & result
+  if dtfDummy in masked: result = "(" & result & ")"
 
 proc unpackModules*(dir: Directory; depth = Natural.high): HashSet[Module] =
   if depth == 0: return
@@ -82,42 +83,49 @@ proc unpackModules*(dir: Directory; depth = Natural.high): HashSet[Module] =
     result.incl subd.unpackModules(depth.pred)
 
 proc incl*[T](s: var HashSet[T]; items: varargs[T]) =
-  s.incl toHashSet @items
-proc inclModules*(cloud: Cloud; modules: HashSet[Module]|Module): Cloud =
-  result = cloud; result.modules.incl modules
-proc inclDirs*(cloud: Cloud; directories: HashSet[Directory]|Directory): Cloud =
-  result = cloud; result.directories.incl directories
-proc inclClouds*(cloud: Cloud; subclouds: HashSet[Cloud]|Cloud): Cloud =
+  for i in items: s.incl i
+proc incl*(s: var HashSet[Cloud]; directories: varargs[Directory]) =
+  for d in directories: s.incl d.cloud
+
+proc incl*(cloud: Cloud; subclouds: HashSet[Cloud]): Cloud =
   result = cloud; cloud.subClouds.incl subclouds
-
-proc inclModules*(module: Module; modules: HashSet[Module]|Module): Module =
-  result = module; discard module.cloud.inclModules modules
-proc inclDirs*(module: Module; directories: HashSet[Directory]|Directory): Module =
-  result = module; discard module.cloud.inclDirs directories
-proc inclClouds*(module: Module; clouds: HashSet[Cloud]|Cloud): Module =
-  result = module; discard module.cloud.inclClouds clouds
-
-proc inclModules*(cloud: Cloud; modules: varargs[Module]): Cloud =
-  result = cloud; result.modules.incl modules
-proc inclDirs*(cloud: Cloud; directories: varargs[Directory]): Cloud =
-  result = cloud; result.directories.incl directories
-proc inclClouds*(cloud: Cloud; subclouds: varargs[Cloud]): Cloud =
+proc incl*(cloud: Cloud; subclouds: varargs[Cloud]): Cloud =
   result = cloud; cloud.subClouds.incl subclouds
+proc incl*(cloud: Cloud; modules: HashSet[Module]): Cloud =
+  result = cloud; result.modules.incl modules
+proc incl*(cloud: Cloud; modules: varargs[Module]): Cloud =
+  result = cloud; result.modules.incl modules
+proc incl*(cloud: Cloud; dirs: varargs[Directory]): Cloud =
+  result = cloud; result.subClouds.incl dirs
 
-proc inclModules*(module: Module; modules: varargs[Module]): Module =
-  result = module; discard module.cloud.inclModules modules
-proc inclDirs*(module: Module; directories: varargs[Directory]): Module =
-  result = module; discard module.cloud.inclDirs directories
-proc inclClouds*(module: Module; clouds: varargs[Cloud]): Module =
-  result = module; discard module.cloud.inclClouds clouds
+proc incl*(module: Module; modules: HashSet[Module]): Module =
+  result = module; result.cloud.modules.incl modules
+proc incl*(module: Module; modules: varargs[Module]): Module =
+  result = module; result.cloud.modules.incl modules
+proc incl*(module: Module; clouds: HashSet[Cloud]): Module =
+  result = module; result.cloud.subClouds.incl clouds
+proc incl*(module: Module; clouds: varargs[Cloud]): Module =
+  result = module; result.cloud.subClouds.incl clouds
+proc incl*(module: Module; dirs: varargs[Directory]): Module =
+  result = module; result.cloud.subClouds.incl dirs
 
 proc cloud*(name: string): Cloud =
   Cloud(name: name)
 
-proc mdl*(name: string; flags: set[DTFlag] = {}): Module = Module(name: name, flags: flags, cloud: cloud(name&"_cloud"))
-proc dir*(name: string; flags: set[DTFlag] = {}): Directory = Directory(name: name, flags: flags)
+proc mdl*(name: string; flags: set[DTFlag] = {}): Module =
+  Module(
+    name: name,
+    flags: flags,
+    cloud: cloud(name&"_cloud"),
+  )
+proc dir*(name: string; flags: set[DTFlag] = {}): Directory =
+  Directory(
+    name: name,
+    flags: flags,
+    cloud: cloud(name&"/*"),
+  )
 
-proc isRoot*(node: Module|Directory): bool = node.parent.isNil
+proc isRoot*(node: DTNode): bool = node.parent.isNil
 
 proc toggle[T](s: var set[T]; v: sink T; b: bool) =
   if b: s.incl v
@@ -128,42 +136,49 @@ template toggle_flag(node: DTNode; flag; yes: bool): untyped =
 
 proc dummy*[T: DTNode](node: T; yes = true): T =
   toggle_flag(node, dtfDummy, yes)
-proc includee*[T: DTNode](node: T; yes = true): T =
-  toggle_flag(node, dtfIncludee, yes)
+proc internal*[T: DTNode](node: T; yes = true): T =
+  toggle_flag(node, dtfInternal, yes)
 
-proc private*[T: DTNode](node: T): T =
-  result = node
-  node.exportLevel = esPrivate
-proc recommendPrivate*[T: DTNode](node: T): T =
-  result = node
-  node.exportLevel = esRecommendPrivate
 proc inherit*[T: DTNode](node: T): T =
   result = node
-  node.exportLevel = esInherit
-proc friend*[T: DTNode](node: T): T =
+  node.relationSetting = rsInherit
+proc allowImport*[T: DTNode](node: T): T =
   result = node
-  node.exportLevel = esFriend
-proc public*[T: DTNode](node: T): T =
+  node.relationSetting = rsAllowImport
+proc allowImportAndExport*[T: DTNode](node: T): T =
   result = node
-  node.exportLevel = esPublic
+  node.relationSetting = rsAllowImportAndExport
 
-proc setExport*(module: Module; threthold: ExportLevel): Module =
-  result = module; result.exportThrethold = threthold
+proc dontExportRequires*(module: Module): Module =
+  result = module
+  module.exportSetting = esDontExport
+proc exportAllowedRequires*(module: Module): Module =
+  result = module
+  module.exportSetting = esExportAllowed
+proc exportAllRequires*(module: Module): Module =
+  result = module
+  module.exportSetting = esExportAll
 
 proc take*(dir: Directory; modules: varargs[Module]): Directory {.discardable.} =
   result = dir
   for module in modules:
     if module.parent != nil:
       module.parent.modules.del(module.name)
+      module.parent.cloud.modules.excl module
     module.parent = dir
     dir.modules[module.name] = module
+    if dtfInternal notin module.flags:
+      dir.cloud.modules.incl module
 proc take*(dir: Directory; subdirs: varargs[Directory]): Directory {.discardable.} =
   result = dir
   for subd in subdirs:
     if subd.parent != nil:
       subd.parent.subdirs.del(subd.name)
+      subd.parent.cloud.subClouds.excl subd.cloud
     subd.parent = dir
     dir.subdirs[subd.name] = subd
+    if dtfInternal notin subd.flags:
+      dir.cloud.subClouds.incl subd.cloud
 
 macro takeBlock*(dir: Directory; stmt): Directory =
   result = dir
@@ -175,12 +190,20 @@ macro addBlock*(module: Module; stmt): Module =
   return quote do:
     (discard `module`.contents.add(children); `module`)
 
+proc rootDir*(node: DTNode): Directory =
+  if node.parent == nil:
+    when node is Module:
+      return nil
+    else:
+      return Directory(node)
+  return node.parent.rootDir
 
 proc absolutePath*(node: DTNode): string =
   if node.parent == nil: return node.nameWithExt
   absolutePath(node.parent)/node.nameWithExt
 
 proc relativePath*(path: DTNode; base: Directory): string =
+  if path.rootDir != base.rootDir: return path.absolutePath
   result = "."/relativePath(path.absolutePath, base.absolutePath)
 
 proc relativePath*(path: DTNode; base: Module): string =
@@ -211,33 +234,47 @@ proc `//`*(dir: Directory; path: string): Module =
 
 proc unpackModules*(cloud: Cloud): HashSet[Module] =
   result = cloud.modules
-  for directory in cloud.directories:
-    result.incl unpackModules(directory)
   for sub in cloud.subClouds:
     result.incl unpackModules(sub)
 
-proc getExportLevel(node: DTNode): ExportLevel =
-  if node.exportLevel == esInherit:
-    if node.isRoot:
-      return esFriend
-    return node.parent.getExportLevel
-  return node.exportLevel
+proc getRelation(node: DTNode): RelationSetting =
+  if node.relationSetting != rsInherit:
+    return node.relationSetting
+  if node.isRoot:
+    return rsAllowImportAndExport
+  return node.parent.getRelation
+
 proc makeImportSentence(target, module: Module; res: var string) : bool =
-  if dtfIncludee in target.flags: return false
   let path = target.relativePath(module).changeFileExt("")
-  if target.getExportLevel >= module.exportThrethold:
-    res = "import " & path & "; export " & target.name
+  template ie: string = "import " & path & "; export " & target.name
+  template i: string = "import " & path
+  case target.getRelation
+  of rsInherit: return false
+  of rsAllowImport:
+    case module.exportSetting:
+    of esDontExport, esExportAllowed:
+      res = i
+    of esExportAll:
+      res = ie
     return true
-  else:
-    res = "import " & path
+  of rsAllowImportAndExport:
+    case module.exportSetting:
+    of esDontExport:
+      res = i
+    of esExportAllowed, esExportAll:
+      res = ie
     return true
 
 proc importFromCloud*(_:typedesc[ParagraphSt]; module: Module): ParagraphSt =
-  result = ParagraphSt()
+  var statements: seq[string]
   var str: string
   for target in module.cloud.unpackModules:
     if makeImportSentence(target, module, str):
-      discard result.add str
+      statements.add str
+
+  result = ParagraphSt(children: newSeqOfCap[Statement](statements.len))
+  for s in statements.sorted:
+    result.children.add text s
 
 proc generate*(module: Module) =
   if dtfDummy in module.flags: return
@@ -276,8 +313,6 @@ proc dumpTree*(cloud: Cloud; base: Module): Statement =
   let tree = TreeSt(head: cloud.dumpName)
   result = tree
 
-  for directory in cloud.directories:
-    discard tree.add directory.relativePath(base) & "/ ..."
   for module in cloud.modules:
     discard tree.add module.relativePath(base)
   for subc in cloud.subClouds:

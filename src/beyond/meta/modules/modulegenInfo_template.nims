@@ -12,14 +12,13 @@ proc drop*(modules: seq[string]) =
       if fileExists subnims:
         exec "nim --hints:off "&subnims
         if module.listDirs.len + module.listFiles.len == 1:
-          echo &"""{MAGENTA "removing"} {YELLOW thisDir()/module} since there are no files..."""
+          echo &"""{MAGENTA "dropping"} {YELLOW thisDir()/module} since there are no files..."""
           rmDir module
       else:
-        echo &"""{MAGENTA "removing"} {YELLOW thisDir()/module} forcibly since there are no `genmdl.nims`..."""
-        rmDir module
+        echo &"""failed to drop {YELLOW thisDir()/module} since missing `genmdl.nims`."""
 
     elif fileExists module:
-      echo &"""{MAGENTA "removing"} {YELLOW thisDir()/module}..."""
+      echo &"""{MAGENTA "dropping"} {YELLOW thisDir()/module}..."""
       rmFile module
 
 when isMainModule:
