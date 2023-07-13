@@ -25,12 +25,14 @@ template All*(_: typedesc[set[DTFlag]]): set[DTFlag] =
 type
   RelationSetting* = enum
     rsInherit
-    rsAllowImport
-    rsAllowImportAndExport
-  ExportSetting* = enum
-    esDontExport
-    esExportAllowed
-    esExportAll
+    rsImportOnly
+    rsAllowExport
+  CloudUsage* = enum
+    cuImportAllowedExports
+    cuImportAll
+    cuImportExportAllowedExports
+    cuExportAllowed
+    cuExportAll
 
   Cloud* = ref object
     name*: string
@@ -49,7 +51,7 @@ type
     subdirs*: Table[string, Directory]
 
   Module* = ref object of DTNode
-    exportSetting*: ExportSetting = esDontExport
+    cloudUsage*: CloudUsage = cuImportAll
     contents*: Statement = ParagraphSt()
     header*: string = "## This module was generated automatically. Changes will be lost."
 
@@ -142,22 +144,28 @@ proc internal*[T: DTNode](node: T; yes = true): T =
 proc inherit*[T: DTNode](node: T): T =
   result = node
   node.relationSetting = rsInherit
-proc allowImport*[T: DTNode](node: T): T =
+proc importOnly*[T: DTNode](node: T): T =
   result = node
-  node.relationSetting = rsAllowImport
-proc allowImportAndExport*[T: DTNode](node: T): T =
+  node.relationSetting = rsImportOnly
+proc allowExport*[T: DTNode](node: T): T =
   result = node
-  node.relationSetting = rsAllowImportAndExport
+  node.relationSetting = rsAllowExport
 
-proc dontExportRequires*(module: Module): Module =
+proc importModules_AllowedExports*(module: Module): Module =
   result = module
-  module.exportSetting = esDontExport
-proc exportAllowedRequires*(module: Module): Module =
+  module.cloudUsage = cuImportAllowedExports
+proc importModules_all*(module: Module): Module =
   result = module
-  module.exportSetting = esExportAllowed
-proc exportAllRequires*(module: Module): Module =
+  module.cloudUsage = cuImportAll
+proc importExportModules_allowedExports*(module: Module): Module =
   result = module
-  module.exportSetting = esExportAll
+  module.cloudUsage = cuImportExportAllowedExports
+proc exportModules_allowed*(module: Module): Module =
+  result = module
+  module.cloudUsage = cuExportAllowed
+proc exportModules_all*(module: Module): Module =
+  result = module
+  module.cloudUsage = cuExportAll
 
 proc take*(dir: Directory; modules: varargs[Module]): Directory {.discardable.} =
   result = dir
@@ -241,7 +249,7 @@ proc getRelation(node: DTNode): RelationSetting =
   if node.relationSetting != rsInherit:
     return node.relationSetting
   if node.isRoot:
-    return rsAllowImportAndExport
+    return rsAllowExport
   return node.parent.getRelation
 
 proc makeImportSentence(target, module: Module; res: var string) : bool =
@@ -249,21 +257,25 @@ proc makeImportSentence(target, module: Module; res: var string) : bool =
   template ie: string = "import " & path & "; export " & target.name
   template i: string = "import " & path
   case target.getRelation
-  of rsInherit: return false
-  of rsAllowImport:
-    case module.exportSetting:
-    of esDontExport, esExportAllowed:
+  of rsInherit: false
+  of rsImportOnly:
+    case module.cloudUsage:
+    of cuImportExportAllowedExports, cuImportAllowedExports:
+      false
+    of cuImportAll, cuExportAllowed:
       res = i
-    of esExportAll:
+      true
+    of cuExportAll:
       res = ie
-    return true
-  of rsAllowImportAndExport:
-    case module.exportSetting:
-    of esDontExport:
+      true
+  of rsAllowExport:
+    case module.cloudUsage:
+    of cuImportAllowedExports, cuImportAll:
       res = i
-    of esExportAllowed, esExportAll:
+      true
+    of cuImportExportAllowedExports, cuExportAllowed, cuExportAll:
       res = ie
-    return true
+      true
 
 proc importFromCloud*(_:typedesc[ParagraphSt]; module: Module): ParagraphSt =
   var statements: seq[string]

@@ -4,12 +4,14 @@ import beyond/meta/statements
 var d_src = dir"tests/modules/src"
 var d_root = dir"root"
 var d_generated = dir"generated"
-var root = exportAllowedRequires mdl("root")
+var root = mdl("root")
 var internal = mdl"internal"
 
 discard +/%..d_src:
-  root.incl d_root
-  +/%..allowImportAndExport d_root:
+  root
+    .importExportModules_allowedExports
+    .incl d_root
+  +/%..allowExport d_root:
     +/%..dummy dir"manual_impremented":
       dummy mdl"prelude"
     +/%..d_generated:
