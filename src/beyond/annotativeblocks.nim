@@ -31,8 +31,11 @@ var subjects {.compiletime.} : AnnoSubjects
 var tokens {.compiletime.} : AnnoTokens
 var todomap*: AnnoMap
 
-var todoid_latest {.compileTime.} : int
+proc `$`(token: AnnoToken): string =
+  let path = relativePath(token.lineinfo.filename, getCurrentDir())
+  $token.kind & ": " & path & ":" & $token.lineInfo.line & ":" & $token.lineInfo.column
 
+var todoid_latest {.compileTime.} : int
 template issueID: AnnoID =
   inc todoid_latest
   AnnoID todoid_latest
@@ -45,16 +48,19 @@ proc subject*(summary: string): AnnoSubject {.compileTime.} =
 
 template define(anno): untyped =
   macro anno*(marker: static AnnoSubject; includeThem: static bool; body): untyped =
-    tokens[marker.id].incl AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
-    hint $`ak anno` & marker.summary, newEmptyNode()
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
+    tokens[marker.id].incl token
+    hint $token.kind & ": " & marker.summary, newEmptyNode()
     if includeThem: return body
   macro anno*(marker: static AnnoSubject; body): untyped =
-    tokens[marker.id].incl AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
-    hint $`ak anno` & marker.summary, newEmptyNode()
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
+    tokens[marker.id].incl token
+    hint $token.kind & ": " & marker.summary, newEmptyNode()
     body
   macro anno*(marker: static AnnoSubject) =
-    tokens[marker.id].incl AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`)
-    hint $`ak anno`  & ": " & marker.summary, newEmptyNode()
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`)
+    tokens[marker.id].incl token
+    hint $token.kind & ": " & marker.summary, newEmptyNode()
 
 define TODO
 define FIXME
@@ -97,12 +103,6 @@ macro collect*: untyped =
     result.add quote do:
       todomap[`subject`] = @`tokens`
 
-
-proc `$`(token: AnnoToken): string =
-  # var lineinfo = token.lineinfo
-  # lineinfo.filename = relativePath(lineinfo.filename, getCurrentDir())
-  # $lineinfo
-  $token.kind & ": " & relativePath(token.lineinfo.filename, getCurrentDir()) & ":" & $token.lineInfo.line & ":" & $token.lineInfo.column
 
 proc report_markdown* : Statement =
   let list = ListSt.unordered_star()
