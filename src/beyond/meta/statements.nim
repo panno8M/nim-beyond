@@ -66,6 +66,11 @@ type
   RenderingConfig* = object
     ignoreComment*: HashSet[string]
 
+proc ordered_decimal*(_: typedesc[ListSt]): ListSt =
+  ListSt(stylize: ListStylize_ordered_decimal)
+proc unordered_star*(_: typedesc[ListSt]): ListSt =
+  ListSt(stylize: ListStylize_unordered_star)
+
 template forValidChild(children: seq[Statement]; body): untyped =
   for i_child {.inject.}, child {.inject.} in children.pairs:
     if child.isNil: continue

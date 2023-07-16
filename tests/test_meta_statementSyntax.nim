@@ -1,6 +1,6 @@
 import beyond/meta/[
   statements,
-  statements/nimtraits,
+  statements/nimkit,
 ]
 import std/strutils
 
