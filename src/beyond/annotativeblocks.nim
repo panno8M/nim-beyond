@@ -7,33 +7,43 @@ import std/os
 import meta/statements
 import meta/statements/markdownkit
 
+export sets.incl
+
 type
   AnnoKind = enum
     akTodo = "TODO"
     akFixme = "FIXME"
     akBug = "BUG"
 
-  AnnoID = int
+  AnnoID = distinct int
   AnnoSubject = object
     summary: string
     id: AnnoID
+    parent: AnnoID
   AnnoToken = object
     kind: AnnoKind
     lineInfo: LineInfo
+    comment: string
     contents: string
 
   AnnoSubjects = Table[AnnoID, AnnoSubject]
   AnnoTokens = OrderedTable[AnnoID, OrderedSet[AnnoToken]]
 
-  AnnoMap = OrderedTable[AnnoSubject, seq[AnnoToken]]
-
 var subjects {.compiletime.} : AnnoSubjects
 var tokens {.compiletime.} : AnnoTokens
-var todomap*: AnnoMap
+
+var collected_subjects : AnnoSubjects
+var collected_tokens : AnnoTokens
+
+proc `==`*(a,b: AnnoID): bool {.borrow.}
+proc isNone*(x: AnnoID): bool = (int x) == 0
 
 proc `$`(token: AnnoToken): string =
   let path = relativePath(token.lineinfo.filename, getCurrentDir())
-  $token.kind & ": " & path & ":" & $token.lineInfo.line & ":" & $token.lineInfo.column
+  let comment =
+    if token.comment.isEmptyOrWhitespace: ""
+    else: token.comment & " "
+  $token.kind & ": " & comment & "(" & path & ":" & $token.lineInfo.line & ":" & $token.lineInfo.column & ")"
 
 var todoid_latest {.compileTime.} : int
 template issueID: AnnoID =
@@ -46,21 +56,43 @@ proc subject*(summary: string): AnnoSubject {.compileTime.} =
   subjects[result.id] = result
   tokens[result.id] = initOrderedSet[AnnoToken]()
 
+proc setParent*(child, parent: AnnoSubject): AnnoSubject =
+  result = AnnoSubject(summary: child.summary, id: child.id, parent: parent.id)
+  subjects[result.id] = result
+
+template hintmessage(token: AnnoToken, subj: AnnoSubject): string =
+  let msg = $token.kind & ": " & subj.summary
+  if token.comment.isEmptyOrWhitespace: msg
+  else: msg & ".. " & token.comment
 template define(anno): untyped =
-  macro anno*(marker: static AnnoSubject; includeThem: static bool; body): untyped =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
-    tokens[marker.id].incl token
-    hint $token.kind & ": " & marker.summary, newEmptyNode()
+  macro anno*(subj: static AnnoSubject; comment: static string; includeThem: static bool; body): untyped =
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: comment, contents: (repr body)[1..^1])
+    tokens[subj.id].incl token
+    hint hintmessage(token, subj), newEmptyNode()
     if includeThem: return body
-  macro anno*(marker: static AnnoSubject; body): untyped =
+  macro anno*(subj: static AnnoSubject; includeThem: static bool; body): untyped =
     let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
-    tokens[marker.id].incl token
-    hint $token.kind & ": " & marker.summary, newEmptyNode()
+    tokens[subj.id].incl token
+    hint hintmessage(token, subj), newEmptyNode()
+    if includeThem: return body
+  macro anno*(subj: static AnnoSubject; comment: static string; body): untyped =
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: comment, contents: (repr body)[1..^1])
+    tokens[subj.id].incl token
+    hint hintmessage(token, subj), newEmptyNode()
     body
-  macro anno*(marker: static AnnoSubject) =
+  macro anno*(subj: static AnnoSubject; body): untyped =
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
+    tokens[subj.id].incl token
+    hint hintmessage(token, subj), newEmptyNode()
+    body
+  macro anno*(subj: static AnnoSubject; comment: static string) =
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: comment)
+    tokens[subj.id].incl token
+    hint hintmessage(token, subj), newEmptyNode()
+  macro anno*(subj: static AnnoSubject) =
     let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`)
-    tokens[marker.id].incl token
-    hint $token.kind & ": " & marker.summary, newEmptyNode()
+    tokens[subj.id].incl token
+    hint hintmessage(token, subj), newEmptyNode()
 
 define TODO
 define FIXME
@@ -68,23 +100,25 @@ define BUG
 
 
 macro collect*: untyped =
-  var subjects_table: Table[int, NimNode]
-  var tokens_table: Table[int, seq[NimNode]]
+  result = newStmtList()
   for id, subject in subjects:
     let summary = newlit subject.summary
-    subjects_table[int id] = quote do:
-      AnnoSubject(
+    let parent = newlit int subject.parent
+    result.add quote do:
+      collected_subjects[`id`] = AnnoSubject(
         summary: `summary`,
         id: `id`,
+        parent: AnnoID `parent`,
         )
   for id, tokenset in tokens:
-    var tokenlist = newSeq[NimNode]()
+    var tokenlist = newNimNode(nnkBracket)
     for token in tokenset:
       let
         filename = newlit token.lineInfo.filename
         line = newlit token.lineInfo.line
         column = newlit token.lineInfo.column
         kind = newlit token.kind
+        comment = newlit token.comment
         contents = newlit token.contents
       tokenlist.add quote do:
         AnnoToken(
@@ -93,31 +127,32 @@ macro collect*: untyped =
             line: `line`,
             column: `column`),
           kind: `kind`,
+          comment: `comment`,
           contents: `contents`,
         )
-    tokens_table[int id] = tokenlist
-
-  result = newStmtList()
-  for id, subject in subjects_table:
-    let tokens = nnkBracket.newTree(tokens_table[id])
     result.add quote do:
-      todomap[`subject`] = @`tokens`
+      collected_tokens[`id`] = toOrderedSet `tokenlist`
 
 
 proc report_markdown* : Statement =
-  let list = ListSt.unordered_star()
-  for subject, tokens in todomap:
+  var checkboxes: Table[AnnoSubject, CheckBoxSt]
+
+  for id, subject in collected_subjects:
     let tokenlist = ListSt.unordered_star()
-    for token in tokens:
-      discard +$$..tokenlist:
-        +$$..ParagraphSt():
-          $token
-          +$$..OptionSt(eval: not token.contents.isEmptyOrWhitespace):
-            # IndentSt(level:2)
-            PrefixSt(style: "  | ").add(token.contents)
+    for token in collected_tokens[id]:
+        discard +$$..tokenlist:
+          +$$..BlockSt(head: $token):
+            +$$..OptionSt(eval: not token.contents.isEmptyOrWhitespace):
+              QuoteSt().add(token.contents)
 
-    discard +$$..list:
-      +$$..CheckBoxSt(checked: false, head: subject.summary):
-          tokenlist
+    checkboxes[subject] = CheckBoxSt(checked: false, head: subject.summary)
+        .add( IndentSt(level: 2).add(tokenlist))
+  for subject, checkbox in checkboxes:
+    if not subject.parent.isNone:
+      checkboxes[collected_subjects[subject.parent]].children[^1].children.insert(checkbox, 0)
+
+  let list = ListSt.unordered_star()
+  for subject, checkbox in checkboxes:
+    if subject.parent.isNone:
+      discard list.add checkbox
   return list
-
