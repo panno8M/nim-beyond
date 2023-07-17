@@ -6,10 +6,8 @@ type
 
 method render(self: CheckBoxSt; cfg: RenderingConfig): seq[string] =
   let checkbox =
-   if self.checked:
-    "[x] "
-   else:
-    "[ ] "
+    if self.checked: "[x] "
+    else: "[ ] "
   let padding = "    "
   @[self.head].forRenderedChild(cfg):
     if i_rendered == 0:
@@ -18,3 +16,11 @@ method render(self: CheckBoxSt; cfg: RenderingConfig): seq[string] =
       result.add padding & rendered
   self.children.forRenderedChild(cfg):
     result.add rendered
+
+type QuoteSt* = ref object of ParagraphSt
+
+method render(self: QuoteSt; cfg: RenderingConfig): seq[string] =
+  self.children.forRenderedChild(cfg):
+    result.add newStringOfCap(rendered.len + 2)
+    result[^1].add "> "
+    result[^1].add rendered
