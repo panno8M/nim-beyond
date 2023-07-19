@@ -60,39 +60,26 @@ proc setParent*(child, parent: AnnoSubject): AnnoSubject =
   result = AnnoSubject(summary: child.summary, id: child.id, parent: parent.id)
   subjects[result.id] = result
 
+type AnnoHeader* = object
+  subj*: AnnoSubject
+  comment*: string
+  evalBody*: bool
+
+proc with*(subj: AnnoSubject; comment: string = ""; evalBody: bool = true): AnnoHeader {.compileTime.} =
+  AnnoHeader(subj: subj, comment: comment, evalBody: evalBody)
+proc with*(subj: AnnoSubject; evalBody: bool): AnnoHeader {.compileTime.} =
+  AnnoHeader(subj: subj, comment: "", evalBody: evalBody)
+
 template hintmessage(token: AnnoToken, subj: AnnoSubject): string =
   let msg = $token.kind & ": " & subj.summary
   if token.comment.isEmptyOrWhitespace: msg
   else: msg & ".. " & token.comment
 template define(anno): untyped =
-  macro anno*(subj: static AnnoSubject; comment: static string; includeThem: static bool; body): untyped =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: comment, contents: (repr body)[1..^1])
-    tokens[subj.id].incl token
-    hint hintmessage(token, subj), newEmptyNode()
-    if includeThem: return body
-  macro anno*(subj: static AnnoSubject; includeThem: static bool; body): untyped =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
-    tokens[subj.id].incl token
-    hint hintmessage(token, subj), newEmptyNode()
-    if includeThem: return body
-  macro anno*(subj: static AnnoSubject; comment: static string; body): untyped =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: comment, contents: (repr body)[1..^1])
-    tokens[subj.id].incl token
-    hint hintmessage(token, subj), newEmptyNode()
-    body
-  macro anno*(subj: static AnnoSubject; body): untyped =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, contents: (repr body)[1..^1])
-    tokens[subj.id].incl token
-    hint hintmessage(token, subj), newEmptyNode()
-    body
-  macro anno*(subj: static AnnoSubject; comment: static string) =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: comment)
-    tokens[subj.id].incl token
-    hint hintmessage(token, subj), newEmptyNode()
-  macro anno*(subj: static AnnoSubject) =
-    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`)
-    tokens[subj.id].incl token
-    hint hintmessage(token, subj), newEmptyNode()
+  macro anno*(header: static AnnoHeader; body : untyped = nil): untyped =
+    let token = AnnoToken(lineInfo: newEmptyNode().lineInfoObj, kind: `ak anno`, comment: header.comment, contents: (repr body)[1..^1])
+    tokens[header.subj.id].incl token
+    hint hintmessage(token, header.subj), newEmptyNode()
+    if body.kind != nnkNilLit and header.evalBody: return body
 
 define TODO
 define FIXME

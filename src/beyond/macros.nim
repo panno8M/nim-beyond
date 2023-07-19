@@ -115,3 +115,5 @@ proc variableSection_to_exprs*(section: NimNode): seq[NimNode] =
       elif section.kind == nnkLetSection:
         result.add quote do:
           (let `nameWithDeco`: `t` = `v`; `name`)
+
+macro stringifySymbol*(x: untyped): string = toStrLit x
