@@ -1,64 +1,28 @@
-{.experimental: "dynamicBindSym".}
+import std/sequtils
 import ../macros
 
-macro defineProc*(typedef; body): untyped =
-  if not (typedef.kind == nnkInfix and typedef[0].eqIdent "from"):
-    error "Invalid syntax. Type: \ndefineProc `procName` from `procType`: `body`", typedef
-  let name = typedef[1]
-  let procty = bindSym(typedef[2], brOpen)
-  result = nnkProcDef
-    .newTree(name, newEmptyNode(), newEmptyNode())
-    .add(procty.getImpl[0..^1])
-    .add(newEmptyNode())
-    .add newStmtList(body)
-
-type GenProcKind = enum
-  gpkPublicProc
-  gpkPrivateProc
-  gpkLambda
-proc genProcImpl(procdef, name, body: NimNode; kind: GenProcKind): NimNode =
-  var procty = procdef.getTypeImpl[1]
+macro wash*(washby: typedesc[proc]; def): untyped =
+  var procty = washby.getTypeImpl[1]
   if procty.kind == nnkSym:
     procty = procty.getImpl[2]
-  var newname = name
-  var newpragmas = procty[1]
 
-  var newparams = copy procty[0]
-  var argnames: seq[NimNode]
-  for newparam in newparams:
-    if newparam.kind != nnkIdentDefs: continue
-    for i in 0..(newparam.len-3):
-      newparam[i] = genSym(nskParam, $newparam[i])
-      argnames.add newparam[i]
+  procty.expectKind nnkProcTy
 
-  var newbody = body
-    .replaceIdents(argnames)
+  let params = copy procty[0]
+  params.expectKind nnkFormalParams
+  block `Replace each symbols of FormalParams.IdentDefs.name into ident`:
+    for i in (1..<params.len):
+      params[i].expectKind nnkIdentDefs
+      for i_def in 0..<(params[i].len-2): # identdefs: [name..., type, default]
+        if params[i][i_def].kind == nnkSym:
+          params[i][i_def] = ident $params[i][i_def]
 
-  if newname.kind == nnkPragmaExpr:
-    newpragmas.add newname[1][0..^1]
-    newname  = newname[0]
+  proc pragmanodes(p: NimNode): seq[NimNode] =
+    p.expectKind {nnkPragma, nnkEmpty}
+    case p.kind
+    of nnkPragma: return p[0..^1]
+    else: discard
 
-  if kind == gpkPublicProc:
-    newname = newname.postFix("*")
-
-  let nodeKind = case kind
-    of gpkLambda: nnkLambda
-    else: nnkProcDef
-
-  result = nodekind.newTree(
-      newname,
-      newEmptyNode(),
-      newEmptyNode(),
-      newparams,
-      newpragmas,
-      newEmptyNode(),
-      newbody)
-
-macro genPrivateProcAs*(procdef: typedesc[proc]; name; body): untyped =
-  genProcImpl(procdef, name, body, gpkPrivateProc)
-
-macro genPublicProcAs*(procdef: typedesc[proc]; name; body): untyped =
-  genProcImpl(procdef, name, body, gpkPublicProc)
-
-macro genLambda*(procdef: typedesc[proc]; body): untyped =
-  genProcImpl(procdef, newEmptyNode(), body, gpkLambda)
+  def[3] = params
+  def[4] = nnkPragma.newTree concat(def[4].pragmanodes, procty[1].pragmanodes)
+  result = def
