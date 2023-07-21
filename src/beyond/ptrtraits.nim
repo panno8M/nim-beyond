@@ -1,6 +1,5 @@
-## functions in this module will be moved in the future.
-
 import std/strutils
+import std/typetraits
 type DeltaByte* = distinct uint64
 type DeltaIndex* = distinct uint64
 
@@ -27,6 +26,11 @@ func succ*[T](p: ptr T; didx: DeltaIndex): ptr T =
 func pred*[T](p: ptr T; didx: DeltaIndex): ptr T =
   cast[ptr T](cast[uint64](p) - uint64(sizeof T) * didx)
 
+func succ*[T](p: ptr UncheckedArray[T]; didx: DeltaIndex): ptr T =
+  cast[ptr T](cast[uint64](p) + uint64(sizeof T) * didx)
+func pred*[T](p: ptr UncheckedArray[T]; didx: DeltaIndex): ptr T =
+  cast[ptr T](cast[uint64](p) - uint64(sizeof T) * didx)
+
 converter toPointer*[T](x: ptr T): pointer {.noSideEffect.} = cast[pointer](x)
 
 func hex*(p: pointer): string = "0x" & cast[uint](p).toHex
@@ -38,3 +42,6 @@ template `-`*(p: pointer; dbyte: DeltaByte): pointer = p.pred(dbyte)
 
 template `+`*[T](p: ptr T; didx: DeltaIndex): ptr T = p.succ(didx)
 template `-`*[T](p: ptr T; didx: DeltaIndex): ptr T = p.pred(didx)
+
+template `+`*[T](p: ptr UncheckedArray[T]; didx: DeltaIndex): ptr T = p.succ(didx)
+template `-`*[T](p: ptr UncheckedArray[T]; didx: DeltaIndex): ptr T = p.pred(didx)
