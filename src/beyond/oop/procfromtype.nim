@@ -1,7 +1,7 @@
 import std/sequtils
 import ../macros
 
-macro wash*(washby: typedesc[proc]; def): untyped =
+macro implement*(washby: typedesc[proc]; def): untyped =
   var procty = washby.getTypeImpl[1]
   if procty.kind == nnkSym:
     procty = procty.getImpl[2]
