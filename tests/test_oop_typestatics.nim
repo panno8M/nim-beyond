@@ -35,6 +35,10 @@ proc proc_arg*(int_val: int): int {.staticOf: MyOther.} =
   int_val * 3
 
 type MyChild = object of MyObject
+const ID* {.staticOf: MyChild.} = "MyChild"
+let letitem* {.staticOf: MyChild.} = (MyObject|>letitem) * 2
+proc proc_arg*(int_val: int): int {.staticOf: MyChild.} =
+  int_val * 4
 
 MyObject|>`!quoted!` = 1
 
@@ -85,5 +89,13 @@ test "access to static procs":
   check proc_arg_generic[MyOther](3) == 9
 
 test "inheritance":
-  check MyChild|>proc_arg(5) == 10
-  check MyChild|>proc_arg == MyObject|>proc_arg
+  check MyChild|>proc_arg(5) == 20
+  check MyChild|>proc_arg != MyObject|>proc_arg
+
+  MyChild|>proc_no_arg()
+  check MyChild|>proc_no_arg == MyObject|>proc_no_arg
+
+  check MyChild|>ID == "MyChild"
+
+  check MyChild|>letitem == (MyObject|>letitem) * 2
+  check (addr MyChild|>letitem) != (addr MyObject|>letitem)
