@@ -4,11 +4,13 @@ import std/[
   strformat,
   tables,
   sets,
+  options,
   hashes,
   os,
   algorithm,
 ]
 import ./statements
+import ./statements/nimkit
 import ../macros
 
 const modulegenInfo_template = staticRead("./beyond/meta/modules/modulegenInfo_template.nims")
@@ -53,7 +55,13 @@ type
   Module* = ref object of DTNode
     cloudUsage*: CloudUsage = cuImportAll
     contents*: Statement = ParagraphSt()
-    header*: string = "## This module was generated automatically. Changes will be lost."
+    header*: Option[Statement]
+
+var defaultHeader* = +$$..ParagraphSt():
+  "# ======================================== #"
+  "# This module was generated automatically. #"
+  "# Edits will be lost.                      #"
+  "# ======================================== #"
 
 const moduleExt*: string = ".nim"
 method nameWithExt*(node: DTNode): string {.base.} = node.name
@@ -290,8 +298,12 @@ proc importFromCloud*(_:typedesc[ParagraphSt]; module: Module): ParagraphSt =
 
 proc generate*(module: Module) =
   if dtfDummy in module.flags: return
+  var header =
+    if module.header.isSome: (get module.header)
+    else: defaultHeader
+
   var statement = +$$..ParagraphSt():
-    module.header
+    header
     ParagraphSt.importFromCloud(module)
     ""
     module.contents
