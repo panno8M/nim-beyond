@@ -9,7 +9,7 @@ export
 
 proc getName*(node: NimNode): NimNode =
   case node.kind
-  of nnkIdent, nnkAccQuoted:
+  of nnkIdent, nnkAccQuoted, nnkSym:
     return node
   of nnkPostfix:
     return node[1]
@@ -62,18 +62,26 @@ func replaceIdents*(node: NimNode; idents: varargs[NimNode]): NimNode =
       node[i] = node[i].replaceIdents(idents)
   return node
 
-func getPragma*(node: NimNode; name: string): NimNode =
+func getOrPopPragma(node: NimNode; name: string; pop: bool): NimNode =
   node.expectKind {nnkProcDef, nnkFuncDef}
-  for pragma in node.pragma:
+  for i, pragma in node.pragma:
     case pragma.kind
     of nnkCall, nnkCommand, nnkExprColonExpr:
       if pragma[0].eqIdent name:
-        return pragma
+        result = pragma
+        if pop: node.pragma.del(i)
+        return
     of nnkIdent, nnkSym:
       if pragma.eqIdent name:
-        return pragma
+        result = pragma
+        if pop: node.pragma.del(i)
+        return
     else:
       continue
+func getPragma*(node: NimNode; name: string): NimNode =
+  getOrPopPragma(node, name, false)
+func popPragma*(node: NimNode; name: string): NimNode =
+  getOrPopPragma(node, name, true)
 
 func hasNoReturn*(node: NimNode): bool =
   node.expectKind {nnkProcDef, nnkFuncDef}

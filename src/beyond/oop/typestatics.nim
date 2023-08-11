@@ -1,29 +1,33 @@
 import std/[
   strformat,
+  sets,
 ]
 import ../[
   macros,
-  containerprelude,
 ]
 
-type TypeID = string
-var vmap {.compileTime.}: Table[TypeID, seq[NimNode]]
+type BoundSym = string
+var vmap {.compileTime.}: HashSet[BoundSym]
 
 const delim = "|>"
 
 proc getInherit(Type: NimNode): NimNode =
-  if Type.kind != nnkSym: return nil
-  result = Type.getImpl[2][1]
+  result = Type
+  if result.kind == nnkSym:
+    result = result.getImpl[2][1]
   if result.kind == nnkEmpty: return nil
   result = result[0]
 
 
 func resolveTypeID(Type: NimNode): string =
   var r = Type.getType
-  if r.kind == nnkObjectTy:
+  case r.kind
+  of nnkObjectTy:
     r = Type
-  else:
+  of nnkBracketExpr:
     r = r[1]
+  else:
+    discard
   repr r
 func newQuoted(item: NimNode): NimNode =
   nnkAccQuoted.newTree(item)
@@ -33,61 +37,52 @@ func quoteOnce(item: NimNode): NimNode =
   newQuoted item
 
 func makeSymbol(Type, name: NimNode): NimNode =
-  quoteOnce ident resolveTypeID(Type) & delim & $name
+  result = quoteOnce ident resolveTypeID(Type) & delim & $name
+  result.setLineInfo(name.lineInfoObj())
 
 proc accessSymbol(Type, name: NimNode): NimNode =
-  if Type.isNil: return newEmptyNode()
-  if name.quoteOnce in vmap.getOrDefault(resolveTypeID Type, @[]):
-    return makeSymbol(Type, name)
-  return accessSymbol(Type.getInherit, name)
-
-func replaceToStatic(Type: NimNode; node: NimNode): NimNode =
-  let baseName = node.getname
-  let newName = makeSymbol(Type, baseName)
-  result = node.replaceName(newName)
-
+  var Type  = Type
+  var quoted: NimNode
+  while not Type.isNil:
+    quoted = name.quoteOnce
+    result = makeSymbol(Type, name.quoteOnce)
+    if $result in vmap: return
+    Type = Type.getInherit
+  return newEmptyNode()
 
 macro getStatic*[T](Type: typedesc[T]; item): untyped =
-  var symbol: NimNode
-  var whenValid: NimNode
-  template symbolizeIdent(item: NimNode) =
-      symbol = accessSymbol(Type, item)
-      whenValid = symbol
-  block MAKE_TREE:
-    case item.kind
-    of nnkAccQuoted:
-      symbolizeIdent item
-    else:
-      if item.len == 0:
-        symbolizeIdent item
-      else:
-        whenValid = copy item
-        var task = whenValid
-        while task.len != 0 and task[0].len != 0:
-          task = task[0]
-        symbol = accessSymbol(Type, task[0])
-        task[0] = symbol
-  result = whenValid
+  case item.kind
+  of nnkAccQuoted, nnkIdent, nnkSym:
+    result = accessSymbol(Type, item)
+  else:
+    result = item
+    var task = result
+    while task.len != 0 and task[0].len != 0:
+      task = task[0]
+    task[0] = accessSymbol(Type, task[0])
 
 proc defineStaticProc(Type, node: NimNode): NimNode =
   node.expectKind {nnkProcDef, nnkFuncDef, nnkConverterDef, nnkTemplateDef, nnkMacroDef}
-  vmap.add(resolveTypeID Type, node[0].getname.quoteOnce)
-  node[0] = Type.replaceToStatic(node[0])
+  let sym = makeSymbol(Type, node[0].getname)
+  vmap.incl $sym
+  node[0] = node[0].replaceName(sym)
   node
 
 proc defineStaticVariableSection(Type, node: NimNode): NimNode =
   node.expectKind {nnkVarSection, nnkLetSection, nnkConstSection}
   for def in node:
     for i in countup(0, def.len-3):
-      vmap.add(resolveTypeID Type, def[i].getname.quoteOnce)
-      def[i] = Type.replaceToStatic(def[i])
+      let sym = makeSymbol(Type, def[i].getname)
+      vmap.incl $sym
+      def[i] = def[i].replaceName(sym)
   node
 
 proc defineStaticTypeSection(Type, node: NimNode): NimNode =
   node.expectKind nnkTypeSection
   for def in node:
-    vmap.add(resolveTypeID Type, def[0].getname.quoteOnce)
-    def[0] = Type.replaceToStatic(def[0])
+    let sym = makeSymbol(Type, def[0].getname)
+    vmap.incl $sym
+    def[0] = def[0].replaceName(sym)
   node
 
 proc staticOf_recursive(Type, node: NimNode): NimNode =

@@ -88,6 +88,12 @@ test "access to static procs":
   check proc_arg_generic[MyObject](3) == 6
   check proc_arg_generic[MyOther](3) == 9
 
+test "with typedesc":
+  check (typedesc[MyObject])|>varitem == MyObject|>varitem
+  proc x(T: typedesc[MyObject]) =
+    check T|>varitem == MyObject|>varitem
+  x(MyObject)
+
 test "inheritance":
   check MyChild|>proc_arg(5) == 20
   check MyChild|>proc_arg != MyObject|>proc_arg
@@ -99,3 +105,32 @@ test "inheritance":
 
   check MyChild|>letitem == (MyObject|>letitem) * 2
   check (addr MyChild|>letitem) != (addr MyObject|>letitem)
+
+import typetraits
+suite "Type resolving":
+  test "distinct":
+    type PTR = distinct pointer
+    block:
+      var ID {.used, staticOf: PTR.}: int
+      check declared `PTR|>ID`
+    block:
+      var ID {.used, staticOf: distinctBase(PTR).}: int
+      check declared `pointer|>ID`
+  test "alias":
+    type PTR = pointer
+    block:
+      var ID {.staticOf: PTR.}: int
+      var HANDLE {.used, staticOf: pointer.}: int
+      check declared `pointer|>ID`
+      check declared `pointer|>HANDLE`
+      check addr(PTR|>ID) == addr(pointer|>ID)
+  test "inheritance":
+    type INSTANCE = object of RootObj
+    block:
+      var ID {.staticOf: RootObj.}: int
+      var DB {.staticOf: INSTANCE.}: int
+      check declared `RootObj|>ID`
+      check addr(RootObj|>ID) == addr(INSTANCE|>ID)
+      check not declared `RootObj|>DB`
+      check not declared `INSTANCE|>DB` # (moduleA.INSTANCE(INSTANCE_00000) != moduleB.INSTANCE(INSTNACE_00001))
+      check INSTANCE|>DB == 0

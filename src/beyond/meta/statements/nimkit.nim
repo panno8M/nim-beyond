@@ -19,11 +19,11 @@ func nimDoc*(_: typedesc[CommentSt]; execute: bool): CommentSt = CommentSt(
   style: NimDocComment_str,
   execute: execute)
 
-type NimIdentDef* = tuple
-  name, `type`: string
-  default: Option[string]
+type NimIdentDef* = object
+  name*, `type`*: string
+  default*: Option[string]
 func idef*(name, `type`: string; default: Option[string]): NimIdentDef =
-  (name: name, `type`: `type`, default: default)
+  NimIdentDef(name: name, `type`: `type`, default: default)
 func idef*(name, `type`: string; default: string): NimIdentDef =
   idef(name, `type`, some default)
 func idef*(name, `type`: string): NimIdentDef =
@@ -35,33 +35,27 @@ func `$`*(idef: NimIdentDef): string =
     result &= " = " & (get idef.default)
 func `$`*(idefs: seq[NimIdentDef]): string = idefs.mapIt($it).join("; ")
 type NimProcKind* = enum
-  PrivateProc
-  PublicProc
-  PrivateFunc
-  PublicFunc
-  PrivateLambdaDef
-  PublicLambdaDef
+  npkProc = "proc"
+  npkFunc = "func"
+  npkMethod = "method"
+type NimProcFlag* = enum
+  npfExport
+  npfOneline
 type NimProcSt* = ref object of ParagraphSt
-  name*: string
   kind*: NimProcKind
+  flags*: set[NimProcFlag]
+  name*: Option[string]
   args*: seq[NimIdentDef]
   return_type*: Option[string]
   pragmas*: seq[string]
 
 method render*(self: NimProcSt; cfg: RenderingConfig): seq[string] =
-  result.add case self.kind
-  of NimProcKind.PrivateProc:
-    "proc " & self.name
-  of NimProcKind.PublicProc:
-    "proc " & self.name & "*"
-  of NimProcKind.PrivateFunc:
-    "func" & self.name
-  of NimProcKind.PublicFunc:
-    "func" & self.name & "*"
-  of NimProcKind.PrivateLambdaDef:
-    self.name & ": proc"
-  of NimProcKind.PublicLambdaDef:
-    self.name & "*: proc"
+  result.add $self.kind
+  if self.name.isSome:
+    result[0].add " "
+    result[0].add (get self.name)
+  if npfExport in self.flags:
+    result[0].add "*"
 
   if self.args.len != 0:
     result[0] &= "(" & $self.args & ")"
@@ -70,9 +64,15 @@ method render*(self: NimProcSt; cfg: RenderingConfig): seq[string] =
   if self.pragmas.len != 0:
     result[0] &= " {." & self.pragmas.join(", ") & ".}"
 
-  let idt: Statement = IndentSt(level: 2).add self.children
-  @[idt].forRenderedChild(cfg):
-    result.add rendered
-
-  if result.len > 1:
-    result[0] &= " ="
+  if npfOneline in self.flags:
+    var oneline: seq[string]
+    self.children.forRenderedChild(cfg):
+      oneline.add rendered
+    if oneline.len != 0:
+      result[^1].add " = "
+      result[^1].add oneline.join("; ")
+  else:
+    self.children.forRenderedChild(cfg):
+      result.add "  " & rendered
+    if result.len > 1:
+      result[0] &= " ="

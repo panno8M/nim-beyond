@@ -4,30 +4,30 @@ import beyond/meta/statements
 const test1 = subject"test1"
 const test2 = subject"test2".setParent(test1)
 
-TODO with test1:
+TODO test1:
   echo "TEST1!"
 
-TODO with(test2, false): # A sugar of `TODO test2: when false: ...`
+TODO ignore test2: # A sugar of `TODO test2: when false: ...`
   echo "TEST2!"
   undefinedProc()
 
-TODO with(test2, "with Comment and erase block", false): # A sugar of `TODO test2: when false: ...`
+TODO ignore test2.comment"with Comment and erase block": # A sugar of `TODO test2: when false: ...`
   echo "TEST2!"
   undefinedProc()
 
-BUG with(test1, "This section has bug..."):
+BUG test1.comment"This section has bug...":
   # echo "BUG!"
   proc someproc() = (discard)
 
 someproc()
 
-TODO with(test1, "single-line")
+TODO test1.comment"single-line"
 
-FIXME with subject"withSubjectDefine":
+FIXME subject"withSubjectDefine":
   echo "With Subject"
 
-FIXME with test1
-BUG with test1
+FIXME test1
+BUG test1
 
 annotativeblocks.collect
 
