@@ -1,6 +1,8 @@
 import beyond/oop
 import std/unittest
 
+template PRAGMA(args: varargs[untyped]) {.pragma.}
+
 type MyObject = object of RootObj
 staticOf MyObject:
   var varitem*: int = 2
@@ -33,6 +35,7 @@ const constitem_by_pragma {.staticOf: MyObject.}: int = 8
 type MyOther = object
 proc proc_arg*(int_val: int): int {.staticOf: MyOther.} =
   int_val * 3
+const ID* {.staticOf: MyOther.} = "MyOther"
 
 type MyChild = object of MyObject
 const ID* {.staticOf: MyChild.} = "MyChild"
@@ -82,12 +85,6 @@ test "access to static procs":
   proc_no_arg_ptr()
   let proc_no_arg_ptr2 {.used.} = `MyObject|>proc_no_arg`
 
-  proc proc_arg_generic[T: MyObject|MyOther](int_val: int): int =
-    T|>proc_arg(int_val)
-
-  check proc_arg_generic[MyObject](3) == 6
-  check proc_arg_generic[MyOther](3) == 9
-
 test "with typedesc":
   check (typedesc[MyObject])|>varitem == MyObject|>varitem
   proc x(T: typedesc[MyObject]) =
@@ -105,6 +102,30 @@ test "inheritance":
 
   check MyChild|>letitem == (MyObject|>letitem) * 2
   check (addr MyChild|>letitem) != (addr MyObject|>letitem)
+
+test "generics":
+  proc getID[T](t: typedesc[T]): string =
+    t|>ID
+  check getID(MyObject) == "MyObject"
+  check getID(MyOther) == "MyOther"
+  check getID(MyChild) == "MyChild"
+
+  proc proc_arg_generic[T: MyObject|MyOther](int_val: int): int =
+    T|>proc_arg(int_val)
+
+  check proc_arg_generic[MyObject](3) == 6
+  check proc_arg_generic[MyOther](3) == 9
+
+test "type alias":
+  MyObject.type:
+    IntAlias {.PRAGMA.} = int
+    ## test comment
+
+  var x: MyObject|>IntAlias
+
+  check typeof(x) is MyObject|>IntAlias
+  check MyObject|>IntAlias is `MyObject|>IntAlias`
+  check `MyObject|>IntAlias` is int
 
 import typetraits
 suite "Type resolving":
