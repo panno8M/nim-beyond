@@ -1,4 +1,5 @@
 import std/strutils
+import std/sequtils
 
 type StyledString* = object of RootObj
   native*: string
@@ -10,13 +11,21 @@ iterator items*(w: StyledString): string =
   for r in w.ranges:
     yield w.native[r]
 
-template convert*[TA,TB: StyledString](A: typedesc[TA]; words: TB): TA = words.convert(A)
-template `>=>`*[TA,TB: StyledString](words: TA; B: typedesc[TB]): TB = words.convert(B)
+type
+  SomeStyledString* = concept type t
+    t is StyledString
+  ScannableStyledString* = concept type t
+    t is StyledString
+    t.scan(string) is t
 
-template scan*[T: StyledString](s: string; _: typedesc[T]): T = T.scan(s)
-template `>!>`*[T: StyledString](s: string; _: typedesc[T]): T = T.scan(s)
 
-proc imitate*[T: StyledString](w: typedesc[T]; str: string): T = T(native: str, ranges: @[str.low..str.high])
+template convert*[TA,TB: SomeStyledString](A: typedesc[TA]; words: TB): TA = words.convert(A)
+template `>=>`*[TA,TB: SomeStyledString](words: TA; B: typedesc[TB]): TB = words.convert(B)
+
+template scan*(s: string; T: typedesc[ScannableStyledString]): T = T.scan(s)
+template `>!>`*(s: string; T: typedesc[ScannableStyledString]): T = T.scan(s)
+
+proc imitate*(T: typedesc[SomeStyledString]; str: string): T = T(native: str, ranges: @[str.low..str.high])
 
 proc addIfValid(ss: var seq[HSlice[int,int]]; s: HSlice[int,int]) =
   if s.a <= s.b:
@@ -37,9 +46,7 @@ const keywords* = [
 type NimVar* = object of StyledString
 type NimType* = object of StyledString
 
-proc imitate*(_: typedesc[NimVar]; str: string; quote: bool): NimVar =
-  if quote: NimVar(native: "`" & str & "`", ranges: @[1..str.high+1])
-  else: NimVar.imitate str
+proc quoted*(w: NimVar): NimVar = NimVar(native: "`" & w.native & "`", ranges: w.ranges.mapIt(it.a.succ..it.b.succ))
 
 # ====================================================================================== #
 
