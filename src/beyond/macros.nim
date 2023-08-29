@@ -13,7 +13,7 @@ proc getName*(node: NimNode): NimNode =
     return node
   of nnkPostfix:
     return node[1]
-  of nnkPragmaExpr, nnkProcDef, nnkFuncDef:
+  of nnkPragmaExpr, RoutineNodes:
     return node[0].getname
   else:
     error "The node is not supported for `getName`", node
@@ -24,7 +24,7 @@ proc replaceName*(node, value: NimNode): NimNode =
     return value
   of nnkPostfix:
     return node.kind.newTree(node[0], value)
-  of nnkPragmaExpr, nnkProcDef, nnkFuncDef:
+  of nnkPragmaExpr, RoutineNodes:
     return node.kind.newTree(node[0].replaceName(value))
       .add node[1..^1]
   else:
@@ -34,7 +34,7 @@ func isExported*(node: NimNode): bool {.compileTime.} =
   case node.kind
   of nnkPostfix:
     return node[0].repr == "*"
-  of nnkPragmaExpr, nnkProcDef, nnkFuncDef:
+  of nnkPragmaExpr, RoutineNodes:
     return node[0].isExported
   else:
     return false
@@ -63,7 +63,7 @@ func replaceIdents*(node: NimNode; idents: varargs[NimNode]): NimNode =
   return node
 
 func getOrPopPragma(node: NimNode; name: string; pop: bool): NimNode =
-  node.expectKind {nnkProcDef, nnkFuncDef}
+  node.expectKind RoutineNodes
   for i, pragma in node.pragma:
     case pragma.kind
     of nnkCall, nnkCommand, nnkExprColonExpr:
@@ -84,7 +84,7 @@ func popPragma*(node: NimNode; name: string): NimNode =
   getOrPopPragma(node, name, true)
 
 func hasNoReturn*(node: NimNode): bool =
-  node.expectKind {nnkProcDef, nnkFuncDef}
+  node.expectKind RoutineNodes
   node.params[0].kind == nnkEmpty or node.params[0].eqIdent("void")
 
 func newCallFromParams*(name: NimNode; params: NimNode): NimNode =
