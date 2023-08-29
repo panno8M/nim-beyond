@@ -38,6 +38,9 @@ type NimProcKind* = enum
   npkProc = "proc"
   npkFunc = "func"
   npkMethod = "method"
+  npkConverer = "converter"
+  npkTemplate = "template"
+  npkMacro = "macro"
 type NimProcFlag* = enum
   npfExport
   npfOneline
