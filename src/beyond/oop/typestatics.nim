@@ -14,10 +14,11 @@ const delim = "|>"
 proc getInherit(Type: NimNode): NimNode =
   result = Type
   if result.kind == nnkSym:
-    result = result.getImpl[2]
+    result = result.getImpl
+  if result.kind != nnkTypeDef: return nil
+  result = result[2]
   if result.kind != nnkObjectTy: return nil
-  else:
-    result = result[1]
+  result = result[1]
   if result.kind == nnkEmpty: return nil
   result = result[0]
 
