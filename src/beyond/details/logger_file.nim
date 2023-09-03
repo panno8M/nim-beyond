@@ -15,10 +15,10 @@ type
     logFiles: int
     bufSize: int
 
-method log*(logger: FileLogger; level: Level; data: LogData; args: varargs[string, `$`]) =
-  if level >= logger.levelThreshold:
-    writeLine(logger.file, data.parse(level, logger.fmtStr, args))
-    if level >= logger.flushThreshold: flushFile(logger.file)
+method log*(logger: FileLogger; data: LogData; args: varargs[string, `$`]) =
+  if data.level >= logger.levelThreshold:
+    writeLine(logger.file, logger.format(data, @args))
+    if data.level >= logger.flushThreshold: flushFile(logger.file)
 
 proc defaultFilename*(): string =
   var (path, name, _) = splitFile(getAppFilename())
@@ -26,22 +26,22 @@ proc defaultFilename*(): string =
 
 proc newFileLogger*(file: File,
                     levelThreshold = lvlAll,
-                    fmtStr = defaultFmtStr,
+                    format: LogFormat,
                     flushThreshold = defaultFlushThreshold): FileLogger =
   new(result)
   result.file = file
   result.levelThreshold = levelThreshold
   result.flushThreshold = flushThreshold
-  result.fmtStr = fmtStr
+  result.format = format
 
 proc newFileLogger*(filename = defaultFilename(),
                     mode: FileMode = fmAppend,
                     levelThreshold = lvlAll,
-                    fmtStr = defaultFmtStr,
+                    format: LogFormat,
                     bufSize: int = -1,
                     flushThreshold = defaultFlushThreshold): FileLogger =
   let file = open(filename, mode, bufSize = bufSize)
-  newFileLogger(file, levelThreshold, fmtStr, flushThreshold)
+  newFileLogger(file, levelThreshold, format, flushThreshold)
 
 proc countLogLines(logger: RollingFileLogger): int =
   let fp = open(logger.baseName, fmRead)
@@ -69,13 +69,13 @@ proc countFiles(filename: string): int =
 proc newRollingFileLogger*(filename = defaultFilename(),
                           mode: FileMode = fmReadWrite,
                           levelThreshold = lvlAll,
-                          fmtStr = defaultFmtStr,
+                          format: LogFormat,
                           maxLines: Positive = 1000,
                           bufSize: int = -1,
                           flushThreshold = defaultFlushThreshold): RollingFileLogger =
   new(result)
   result.levelThreshold = levelThreshold
-  result.fmtStr = fmtStr
+  result.format = format
   result.maxLines = maxLines
   result.bufSize = bufSize
   result.file = open(filename, mode, bufSize = result.bufSize)
@@ -97,8 +97,8 @@ proc rotate(logger: RollingFileLogger) =
     moveFile(dir / (name & ext & srcSuff),
             dir / (name & ext & ExtSep & $(i+1)))
 
-method log*(logger: RollingFileLogger; level: Level; data: LogData; args: varargs[string, `$`]) =
-  if level >= logger.levelThreshold:
+method log*(logger: RollingFileLogger; data: LogData; args: varargs[string, `$`]) =
+  if data.level >= logger.levelThreshold:
     if logger.curLine >= logger.maxLines:
       logger.file.close()
       rotate(logger)
@@ -107,6 +107,6 @@ method log*(logger: RollingFileLogger; level: Level; data: LogData; args: vararg
       logger.file = open(logger.baseName, logger.baseMode,
           bufSize = logger.bufSize)
 
-    writeLine(logger.file, data.parse(level, logger.fmtStr, args))
-    if level >= logger.flushThreshold: flushFile(logger.file)
+    writeLine(logger.file, logger.format(data, @args))
+    if data.level >= logger.flushThreshold: flushFile(logger.file)
     logger.curLine.inc

@@ -1,8 +1,13 @@
-import beyond/logging_api
+import beyond/[
+  logging_api, logging_formatshelf,
+  oop,
+  ]
 
 import std/os
 import std/times
+import std/strformat
 import std/strutils
+import std/sequtils
 
 type
   Stage* = enum
@@ -15,59 +20,31 @@ type
   MyLogData* = object of LogData
     p_user*: ptr LogUser
     summary*: string
+    frame*: PFrame
 
-proc parseToken(data: MyLogData; level: Level; token: string; res: var string): bool {.gcsafe.} =
-  let app = getAppFilename()
-  case token
-  of "date"     : res= getDateStr()
-  of "time"     : res= getClockStr()
-  of "datetime" : res= getDateStr() & "T" & getClockStr()
-  of "app"      : res= app
-  of "appdir"   : res= app.splitFile.dir
-  of "appname"  : res= app.splitFile.name
-  of "levelid"  : res= $LevelNames[level][0]
-  of "levelname": res= LevelNames[level]
-  of "stage"    : res= $data.p_user.stage
-  of "summary"  : res= data.summary
-  of "handler"  : res= data.p_user.handler
-  else:
-    return false
-  return true
+template stage: string = $data.p_user.stage
+template handler: string = $data.p_user.handler
+template summary: string = $data.summary
+proc format {.implement: LogFormat.} =
+  let data = MyLogData data
+  fmt "[{data.frame.procname}: {data.frame.filename}({data.frame.line})] {levelname}-{stage} @{handler} >>> {summary}\n{args.join().splitLines.mapIt(\"  :: \"&it).join()}"
 
-const myFormat = "$levelname-$stage @$handler >>> $summary"
-
-method parse*(data: MyLogData; level: Level; frmt: string;
-                    args: varargs[string, `$`]): string {.gcsafe.} =
-  var msgLen = 0
-  for arg in args:
-    msgLen += arg.len
-  result = newStringOfCap(frmt.len + data.summary.len + msgLen + 20)
-  var token: string
-  for symbol, kind in frmt.lex:
-    case kind
-    of skText:
-      result.add symbol
-    of skToken:
-      if data.parseToken(level, symbol, token):
-        result.add token
-      else:
-        result.add "$"&symbol
-  result.add "\n"
-  for line in args.join("").splitLines:
-    result.add " :: " & line
-
-var L = newConsoleLogger(fmtStr = myFormat)
-var fL = newFileLogger("test.log", fmtStr = myFormat)
-var rL = newRollingFileLogger("rolling.log", fmtStr = myFormat)
+var L = newConsoleLogger(format= format)
+var fL = newFileLogger("test.log", format= format)
+var rL = newRollingFileLogger("rolling.log", format = format)
 
 defaultGroup.loggers.add(@[fL, rL, L])
 
 block:
   let me = LogUser(handler: "for-loop", stage: stgUser)
+  var data = MyLogData(p_user: addr me, level: lvlInfo, frame: getFrame())
   for i in 0 .. 5:
-    MyLogData(p_user: unsafeAddr me, summary: "HELLO-" & $i).info("hello, my-logging! ", i)
+    data.summary = &"HELLO-{i}"
+    # data.frame = getFrame()
+    data.log("hello, my-logging! ", i)
 
 block:
   var nilString: string
   var me = LogUser(handler: "single-call", stage: stgUser)
-  MyLogData(p_user: unsafeAddr me, summary: "HELLO").info("hello", nilString)
+  let data = MyLogData(p_user: addr me, summary: "HELLO", level: lvlInfo, frame: getFrame())
+  data.log("hello", nilString)

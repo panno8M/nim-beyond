@@ -4,7 +4,7 @@ type
   LoggerGroup* = ref object of Logger
     loggers*: seq[Logger]
 
-method log*(logger: LoggerGroup; level: Level; data: LogData, args: varargs[string, `$`]) =
-  if level >= logger.levelThreshold:
+method log*(logger: LoggerGroup; data: LogData, args: varargs[string, `$`]) =
+  if data.level >= logger.levelThreshold:
     for each in logger.loggers:
-      each.log(level, data, args)
+      each.log(data, args)
