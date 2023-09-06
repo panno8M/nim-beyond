@@ -107,6 +107,18 @@ proc convert*(w: Camel; _: typedesc[NimType]): NimType =
       result.native.add w.native[r]
 converter nimType*(w: Camel): NimType = w.convert NimType
 
+proc convert*(w: Camel; _: typedesc[NimVar]): NimVar =
+  result.native = newStringOfCap(w.native.len)
+  result.ranges = w.ranges
+  for i, r in w.ranges:
+    if i == 0:
+      result.native.add w.native[r.a].toLowerAscii
+      if r.b - r.a > 0:
+        result.native.add w.native[r.a+1..r.b]
+    else:
+      result.native.add w.native[r]
+converter nimVar*(w: Camel): NimVar = w.convert NimVar
+
 proc convert*(w: Camel_Continuos; _: typedesc[NimType]): NimType =
   result.native = newStringOfCap(w.native.len)
   result.ranges = w.ranges
@@ -118,6 +130,18 @@ proc convert*(w: Camel_Continuos; _: typedesc[NimType]): NimType =
     if r.b - r.a > 0:
       result.native.add w.native[r.a+1..r.b].toLowerAscii
 converter nimType*(w: Camel_Continuos): NimType = w.convert NimType
+
+proc convert*(w: Camel_Continuos; _: typedesc[NimVar]): NimVar =
+  result.native = newStringOfCap(w.native.len)
+  result.ranges = w.ranges
+  for i, r in w.ranges:
+    if i == 0:
+      result.native.add w.native[r].toLowerAscii
+    else:
+      result.native.add w.native[r.a]
+      if r.b - r.a > 0:
+        result.native.add w.native[r.a+1..r.b].toLowerAscii
+converter nimVar*(w: Camel_Continuos): NimVar = w.convert NimVar
 
 proc convert*(w: Snake; _: typedesc[NimType]): NimType =
   result.native = newStringOfCap(w.native.len)

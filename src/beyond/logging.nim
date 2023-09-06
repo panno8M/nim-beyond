@@ -11,3 +11,8 @@ template notice *(args: varargs[string, `$`]) = defaultGroup.log(NimLogData(leve
 template warn   *(args: varargs[string, `$`]) = defaultGroup.log(NimLogData(level: lvlWarn), args)
 template error  *(args: varargs[string, `$`]) = defaultGroup.log(NimLogData(level: lvlError), args)
 template fatal  *(args: varargs[string, `$`]) = defaultGroup.log(NimLogData(level: lvlFatal), args)
+
+import std/strformat
+import std/strutils
+proc format_DEFAULT* {.implement: LogFormat.} = &"{levelname} {args.join()}"
+proc format_VERBOSE* {.implement: LogFormat.} = &"{levelid}, {levelname} -- {appname}: {args.join()}"
